@@ -1,0 +1,15 @@
+{
+  "name": "bridle",
+  "private": true,
+  "type": "module",
+  "description": "Scripts, keeper and agent for the Bridle vault",
+  "license": "MIT OR Apache-2.0",
+  "scripts": {
+    "deploy": "node scripts/deploy.mjs",
+    "keeper": "node agent/keeper.mjs",
+    "agent": "node agent/agent.mjs"
+  },
+  "dependencies": {
+    "near-api-js": "7.4.0"
+  }
+}

@@ -1,0 +1,19 @@
+[package]
+name = "bridle-vault"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+bridle-core = { path = "../../crates/bridle-core" }
+near-sdk.workspace = true
+borsh.workspace = true
+serde.workspace = true
+hex.workspace = true
+
+[dev-dependencies]
+near-sdk = { workspace = true, features = ["unit-testing"] }

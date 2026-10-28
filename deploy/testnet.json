@@ -1,0 +1,38 @@
+{
+  "parent": "bridle-hq.testnet",
+  "vault": "vault.bridle-hq.testnet",
+  "dao": "bridle-hq.sputnik-v2.testnet",
+  "dao_council": ["bridle-hq.testnet"],
+  "dao_creator": "bridle-probe-1028.testnet",
+  "vault_funding_near": "5",
+  "key_allowance_near": "0.5",
+  "chain": {
+    "chain_id": 84532,
+    "usdc": "0xba50cd2a20f6da35d788639e581bca8d0b5d4d5f",
+    "pool": "0x8bab6d1b75f19e9ed9fce8b9bd338844ff79ae27",
+    "atoken": "0x10f1a9d11cdf50041f3f8cb7191cbe2f31750acc"
+  },
+  "floors": {
+    "min_max_fee_per_gas": "20000000",
+    "min_max_priority_fee_per_gas": "100000",
+    "min_short_window_ms": 60000,
+    "min_long_window_ms": 120000,
+    "min_settle_deadline_ms": 300000
+  },
+  "policy": {
+    "supply_cap": "200000000",
+    "agent_max_per_action": "50000000",
+    "agent_quota_per_epoch": 20,
+    "agent_min_interval_ms": 60000,
+    "fast_outflow_per_epoch": "20000000",
+    "max_fee_per_gas": "200000000",
+    "max_priority_fee_per_gas": "2000000",
+    "short_window_ms": 180000,
+    "long_window_ms": 600000,
+    "settle_deadline_ms": 1200000,
+    "epoch_ms": 86400000,
+    "max_pause_ms": 1800000,
+    "max_vetoes_per_epoch": 3,
+    "treasury_path": "treasury"
+  }
+}

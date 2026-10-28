@@ -7,6 +7,8 @@
 //
 // Every claim is a PASS/FAIL line; the exit code is non-zero if anything fails.
 //   node scripts/demo.mjs            (after `make build`)
+//   node scripts/demo.mjs --prebuilt (on deploy/prebuilt, no Rust needed)
+import crypto from "crypto";
 import { execFileSync } from "child_process";
 import fs from "fs";
 import os from "os";
@@ -46,9 +48,26 @@ fs.rmSync(tmp, { recursive: true, force: true });
 fs.mkdirSync(path.join(tmp, "keys"), { recursive: true });
 process.env.TMPDIR = tmp; // the sandbox binary cache and the temp dir must share a filesystem
 
+// `--prebuilt` runs the demo on deploy/prebuilt/*.wasm (no Rust toolchain needed). The vault wasm
+// there is byte-identical to the code deployed on vault.bridle-hq.testnet; its sha256 is checked
+// against deploy/prebuilt/SHA256SUMS first.
+const PREBUILT = process.argv.includes("--prebuilt");
 const targetDir = process.env.CARGO_TARGET_DIR || path.join(ROOT, "target");
-const VAULT_WASM = process.env.VAULT_WASM || path.join(targetDir, "near/bridle_vault/bridle_vault.wasm");
-const MOCK_WASM = process.env.MOCK_WASM || path.join(targetDir, "near/bridle_mock_signer/bridle_mock_signer.wasm");
+const VAULT_WASM = process.env.VAULT_WASM || (PREBUILT ? path.join(ROOT, "deploy/prebuilt/bridle_vault.wasm") : path.join(targetDir, "near/bridle_vault/bridle_vault.wasm"));
+const MOCK_WASM = process.env.MOCK_WASM || (PREBUILT ? path.join(ROOT, "deploy/prebuilt/bridle_mock_signer.wasm") : path.join(targetDir, "near/bridle_mock_signer/bridle_mock_signer.wasm"));
+if (PREBUILT) {
+  const dir = path.join(ROOT, "deploy/prebuilt");
+  const lines = fs.readFileSync(path.join(dir, "SHA256SUMS"), "utf8").trim().split("\n");
+  for (const l of lines) {
+    const [want, name] = l.split(/\s+\*?/);
+    const got = crypto.createHash("sha256").update(fs.readFileSync(path.join(dir, name))).digest("hex");
+    if (got !== want) {
+      console.error(`prebuilt ${name} does not match deploy/prebuilt/SHA256SUMS`);
+      process.exit(2);
+    }
+  }
+  console.log(`prebuilt wasm: ${lines.length} files match deploy/prebuilt/SHA256SUMS (no Rust build)`);
+}
 for (const f of [VAULT_WASM, MOCK_WASM]) {
   if (!fs.existsSync(f)) {
     console.error(`missing ${f}: run \`make build\` first`);
@@ -152,6 +171,12 @@ async function story() {
     settle_deadline_ms: cfg.floors.min_settle_deadline_ms,
     epoch_ms: 1_000_000_000_000,
     treasury: TREASURY,
+    // Earned trust: the agent starts at 30 USDC per action and earns +10 per proved landing,
+    // at most one step per epoch, up to the 50 USDC ceiling.
+    trust_floor_per_action: U(30),
+    trust_step_per_action: U(10),
+    trust_landings_per_step: 1,
+    trust_epochs_per_step: 1,
   };
   const chain = { ...cfg.chain, vault: D };
   const code = fs.readFileSync(VAULT_WASM);
@@ -168,7 +193,7 @@ async function story() {
   ]);
   if (dep.failures.length) throw new Error(`vault deploy failed: ${JSON.stringify(dep.failures)}`);
   say(`vault deployed (${code.length} bytes) at ${VAULT}; Base address D = ${D}`);
-  say(`mandate: agent max ${usd(policy.agent_max_per_action)} per action, supply cap ${usd(policy.supply_cap)}, DAO fast outflow ${usd(policy.fast_outflow_per_epoch)}/epoch, parked window ${policy.long_window_ms / 1000}s`);
+  say(`mandate: agent cap ${usd(policy.trust_floor_per_action)} per action, earned up to ${usd(policy.agent_max_per_action)} by proved landings; supply cap ${usd(policy.supply_cap)}, DAO fast outflow ${usd(policy.fast_outflow_per_epoch)}/epoch, parked window ${policy.long_window_ms / 1000}s`);
 
   const V = (m, a = {}) => lib.view(VAULT, m, a);
   const st00 = await V("get_state");
@@ -253,6 +278,8 @@ async function story() {
   check("approve and supply both landed and were attested; op done", op.status === "done" && op.slots.length === 2 && op.slots.every(landed));
   check("ledger moved only on proof: principal 30.00, idle 75.00 USDC", eq(L.principal, U(30)) && eq(L.idle, U(75)) && eq(L.supplying, 0));
   check("Base agrees: 30.00 aUSDC held by the vault", base.aOf(D) === 30_000_000n);
+  let tr = (await V("get_state")).trust;
+  check("earned trust: the proved supply raised the agent's cap from 30.00 to 40.00 USDC", tr.level === 1 && eq(tr.cap, U(40)) && tr.proved_total === 1, `level ${tr.level}, cap ${tr.cap}`);
   r = await act(agentAcct, "agent_act", { action: { action: "withdraw", amount: U(5) } });
   check("a second agent action right away is rate limited (too_soon)", reason(r) === "too_soon");
   await warp(61_000, "agent minimum interval");
@@ -260,6 +287,8 @@ async function story() {
   await drive();
   L = await ledger();
   check("agent withdraw 5 USDC: principal 25.00, idle 80.00 USDC", r.value?.ok === true && eq(L.principal, U(25)) && eq(L.idle, U(80)));
+  tr = (await V("get_state")).trust;
+  check("a second proved landing in the same epoch does not raise the cap again (one step per epoch)", tr.level === 1 && tr.proved_total === 2 && eq(tr.cap, U(40)));
   const wOp = await V("get_op", { id: opOf(r) });
   r = await keeper.call("credit_deposit", { tx: wOp.slots[0].main.signed[0].hash, hints: { ...hDust, log_index: 2 }, from: depositor, amount: "5000000" });
   check("the withdraw payout cannot be re-credited as a deposit (vault-signed tx)", reason(r) === "bad_credit_sender");
@@ -273,8 +302,8 @@ async function story() {
   const attacks = [
     ["send_to_treasury 80 USDC", { action: "send_to_treasury", amount: U(80) }, "not_allowed"],
     ["unwind everything", { action: "unwind" }, "not_allowed"],
-    ["supply 500 USDC (agent max is 50)", { action: "supply", amount: U(500) }, "above_agent_max"],
-    ["withdraw 50 USDC with only 25 supplied", { action: "withdraw", amount: U(50) }, "insufficient_principal"],
+    ["supply 500 USDC (above the agent's cap)", { action: "supply", amount: U(500) }, "above_agent_max"],
+    ["withdraw 28 USDC with only 25 supplied", { action: "withdraw", amount: U(28) }, "insufficient_principal"],
   ];
   for (const [label, action, want] of attacks) {
     r = await act(agentAcct, "agent_act", { action });
@@ -287,6 +316,7 @@ async function story() {
   check("every refused attempt is counted on-chain (get_rejections +4)", rej1 - rej0 === 4, `${rej0} -> ${rej1}`);
   check("ledger, nonce and operation lock did not move", JSON.stringify(st0.ledger) === JSON.stringify(st1.ledger) && st0.next_nonce === st1.next_nonce && st1.active === null);
   check("Base saw nothing: the vault nonce is unchanged", base.nonceOf(D) === st1.next_nonce);
+  check("the injected requests also cost the agent its earned trust: cap back to 30.00 USDC", st1.trust.level === 0 && eq(st1.trust.cap, U(30)) && st1.trust.last_reset?.[1] === "refusal", JSON.stringify(st1.trust.last_reset));
 
   // ---- 5. outsiders ----------------------------------------------------------------------------
   chapter("Outsiders cannot act or change anything");

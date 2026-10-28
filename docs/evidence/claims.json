@@ -1,0 +1,1654 @@
+{
+ "_about": "Machine-readable live claims. Checked by scripts/verify-claims.mjs (`make verify`). Every hash was taken from README.md, docs/PROGRESS.md or docs/evidence/live-tests.md; `source` names the section. Types: near_tx, base_receipt, base_never_mined, near_keys, vault_view, code_hash, prebuilt_sums, wasm_imports, derived_address, ledger_vs_chain, nonce_vs_chain, policy_matches_deploy.",
+ "base_chain_id": 84532,
+ "prebuilt_vault": "deploy/prebuilt/bridle_vault.wasm",
+ "addresses": {
+  "vault": "0x96fbd55e58c16b10df15532e9157e067f2d1d8aa",
+  "arena_vault": "0x53532502c663fdbe9dee366b17e03ce79ec6d3de",
+  "treasury": "0xdc35e2ce2ae9c135795b6cc53288d4f72a866007",
+  "probe_vault": "0x8dcbcefb6f02dff2714ae6c7a9cdb6ec5a74b4a3",
+  "usdc": "0xba50cd2a20f6da35d788639e581bca8d0b5d4d5f",
+  "pool": "0x8bab6d1b75f19e9ed9fce8b9bd338844ff79ae27",
+  "atoken": "0x10f1a9d11cdf50041f3f8cb7191cbe2f31750acc"
+ },
+ "historic_code_hashes": {
+  "_note": "Past versions, kept as evidence for the upgrade transactions. The CURRENT deployed hash is never written here: it is sha256 of deploy/prebuilt/bridle_vault.wasm (see deploy/prebuilt/SHA256SUMS).",
+  "v2_code_hash": "0xa0a2f96887b6d2c7aaed4e5a11040dee86208105e599ec3a81741f84c23cbdb9"
+ },
+ "events": {
+  "Transfer": "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+  "Approval": "0x8c5be1e5ebec7d5bd14f71427d1e84f3dd0314c0f7b2291e5b200ac8c7c3b925",
+  "Supply": "0x2b627736bca15cd5381dcf80b0bf11fd197d01a037c52b927a881a10fb73ba61",
+  "Withdraw": "0x3115d1449a7b732c986cba18244e897a450f61e1bb8d589cd2e69e6c8924f9f7"
+ },
+ "claims": [
+  {
+   "id": "E01",
+   "source": "README, Evidence on testnet (Deploy)",
+   "chain": "near",
+   "type": "near_tx",
+   "claim": "Deploy: one tx creates the vault account, deploys and inits it, and adds no key",
+   "tx": "GvJQgpqL5P5MRttooxSdVRDbhKWAtA2Lvvy1pRugodYd",
+   "signer": "bridle-hq.testnet",
+   "expect": {
+    "outcome": "success",
+    "receiver": "vault.bridle-hq.testnet",
+    "actions": [
+     "CreateAccount",
+     "Transfer",
+     "DeployContract",
+     "FunctionCall:new"
+    ]
+   }
+  },
+  {
+   "id": "E02",
+   "source": "README, Evidence on testnet (Deploy), README, What holds (No full-access key)",
+   "chain": "near",
+   "type": "near_keys",
+   "claim": "Vault account today: function-call keys only, constant method lists, finite allowances, receiver is the vault",
+   "account": "vault.bridle-hq.testnet",
+   "method_sets": [
+    [
+     "agent_act"
+    ],
+    [
+     "guardian_pause",
+     "guardian_veto",
+     "guardian_tighten",
+     "guardian_unwind",
+     "cancel"
+    ]
+   ]
+  },
+  {
+   "id": "E03",
+   "source": "README, What holds (No full-access key)",
+   "chain": "near",
+   "type": "near_keys",
+   "claim": "Arena vault account today: function-call keys only, constant method lists, finite allowances",
+   "account": "arena.bridle-hq.testnet",
+   "method_sets": [
+    [
+     "agent_act"
+    ],
+    [
+     "guardian_pause",
+     "guardian_veto",
+     "guardian_tighten",
+     "guardian_unwind",
+     "cancel"
+    ]
+   ]
+  },
+  {
+   "id": "E04",
+   "source": "README, What holds (No full-access key)",
+   "chain": "local",
+   "type": "wasm_imports",
+   "claim": "The prebuilt vault wasm does not import add-full-access-key or delete-account host functions"
+  },
+  {
+   "id": "E05",
+   "source": "README, Evidence on testnet (Deposit)",
+   "chain": "near",
+   "type": "near_tx",
+   "claim": "A deposit is proved by an MPC attestation call, then credited (50 USDC)",
+   "tx": "AWXxM6ftqyKaWPRUBZnoS9TEU8iKfNj4c7yRKHm9EPBH",
+   "signer": "bridle-hq.testnet",
+   "expect": {
+    "outcome": "success",
+    "receiver": "vault.bridle-hq.testnet",
+    "logs_contain": [
+     "verify_foreign_transaction: predecessor=AccountId(\"vault.bridle-hq.testnet\")",
+     "\"event\":\"credited\"",
+     "\"amount\":\"50000000\""
+    ],
+    "value_contains": [
+     "\"ok\":true"
+    ]
+   }
+  },
+  {
+   "id": "E06",
+   "source": "README, Evidence on testnet (Deposit)",
+   "chain": "base",
+   "type": "base_receipt",
+   "claim": "The credited deposit is a real Base USDC Transfer of 50 USDC to the vault address (log index 19)",
+   "tx": "0x153a28fc51f86e09e09c1d1bbf77c32aa8a0a0a1b56fc45ffb7f8a07cff9c1e3",
+   "expect": {
+    "status": 1,
+    "logs": [
+     {
+      "address": "@usdc",
+      "topics": [
+       "Transfer",
+       null,
+       "@vault"
+      ],
+      "amount": "50000000",
+      "log_index": 19
+     }
+    ]
+   }
+  },
+  {
+   "id": "E07",
+   "source": "README, Evidence on testnet (Deposit), README, What holds (replay)",
+   "chain": "near",
+   "type": "vault_view",
+   "claim": "The deposit proof is recorded as consumed (tx hash, log index 19)",
+   "account": "vault.bridle-hq.testnet",
+   "method": "get_credits",
+   "assert": [
+    {
+     "path": "0.0",
+     "equals": "0x153a28fc51f86e09e09c1d1bbf77c32aa8a0a0a1b56fc45ffb7f8a07cff9c1e3"
+    },
+    {
+     "path": "0.1",
+     "equals": "19"
+    }
+   ]
+  },
+  {
+   "id": "E08",
+   "source": "README, Evidence on testnet (Agent supply)",
+   "chain": "near",
+   "type": "near_tx",
+   "claim": "Agent supply of 30 USDC is accepted: the vault starts the operation and has the MPC sign",
+   "tx": "8DRZCxitY8V3s47gJZsp3WVuVxDiFMcT793JfpjHtt9A",
+   "signer": "vault.bridle-hq.testnet",
+   "expect": {
+    "outcome": "success",
+    "receiver": "vault.bridle-hq.testnet",
+    "logs_contain": [
+     "\"event\":\"op_started\"",
+     "Supply { amount: 30000000 }",
+     "sign: predecessor=AccountId(\"vault.bridle-hq.testnet\")",
+     "\"event\":\"signed\""
+    ],
+    "value_contains": [
+     "\"ok\":true"
+    ]
+   }
+  },
+  {
+   "id": "E09",
+   "source": "README, Evidence on testnet (Agent supply), README, What holds (Landed means attested)",
+   "chain": "near",
+   "type": "vault_view",
+   "claim": "Vault ledger op 0: approve and supply both landed by attestation (not trusted_landed) and the op is done",
+   "account": "vault.bridle-hq.testnet",
+   "method": "get_ops",
+   "assert": [
+    {
+     "path": "id=0.status",
+     "equals": "done"
+    },
+    {
+     "path": "id=0.origin",
+     "equals": "agent"
+    },
+    {
+     "path": "id=0.slots.0.status.landed.tx",
+     "equals": "0x8bf95da8a0d0759749efa34114a61525cc50f7d618dfedaaffcfb4d083044eec"
+    },
+    {
+     "path": "id=0.slots.1.status.landed.tx",
+     "equals": "0x18eabe751c5e13768f803ad69f6ef68550ba52e166f519ab75b5ec358cc52682"
+    }
+   ]
+  },
+  {
+   "id": "E10",
+   "source": "README, Evidence on testnet (Agent supply)",
+   "chain": "base",
+   "type": "base_receipt",
+   "claim": "Base approve of op 0: succeeded, sent from the vault address to USDC, Approval of 30 USDC to the Aave pool",
+   "tx": "0x8bf95da8a0d0759749efa34114a61525cc50f7d618dfedaaffcfb4d083044eec",
+   "expect": {
+    "status": 1,
+    "from": "@vault",
+    "value_zero": true,
+    "to": "@usdc",
+    "logs": [
+     {
+      "address": "@usdc",
+      "topics": [
+       "Approval",
+       "@vault",
+       "@pool"
+      ],
+      "amount": "30000000"
+     }
+    ]
+   }
+  },
+  {
+   "id": "E11",
+   "source": "README, Evidence on testnet (Agent supply)",
+   "chain": "base",
+   "type": "base_receipt",
+   "claim": "Base supply of op 0: succeeded, sent from the vault address to the Aave pool, Supply of 30 USDC on behalf of the vault",
+   "tx": "0x18eabe751c5e13768f803ad69f6ef68550ba52e166f519ab75b5ec358cc52682",
+   "expect": {
+    "status": 1,
+    "from": "@vault",
+    "value_zero": true,
+    "to": "@pool",
+    "logs": [
+     {
+      "address": "@pool",
+      "topics": [
+       "Supply",
+       "@usdc",
+       "@vault",
+       null
+      ],
+      "amount": "30000000",
+      "amount_word": 1
+     }
+    ]
+   }
+  },
+  {
+   "id": "E12",
+   "source": "README, Evidence on testnet (Market mode)",
+   "chain": "near",
+   "type": "near_tx",
+   "claim": "Agent in market mode supplies 32 USDC (of 40, a 20% buffer stays idle)",
+   "tx": "CDwojMH5SiJDzkyZicF6cHVH3oAvDxgZiB2sn6nRa467",
+   "signer": "vault.bridle-hq.testnet",
+   "expect": {
+    "outcome": "success",
+    "receiver": "vault.bridle-hq.testnet",
+    "logs_contain": [
+     "\"event\":\"op_started\"",
+     "Supply { amount: 32000000 }",
+     "\"event\":\"signed\""
+    ],
+    "value_contains": [
+     "\"ok\":true"
+    ]
+   }
+  },
+  {
+   "id": "E13",
+   "source": "README, Evidence on testnet (Market mode)",
+   "chain": "near",
+   "type": "vault_view",
+   "claim": "Vault ledger op 5: both steps landed by attestation, op done",
+   "account": "vault.bridle-hq.testnet",
+   "method": "get_ops",
+   "assert": [
+    {
+     "path": "id=5.status",
+     "equals": "done"
+    },
+    {
+     "path": "id=5.amount",
+     "equals": "32000000"
+    },
+    {
+     "path": "id=5.slots.0.status.landed.tx",
+     "equals": "0x6a040032e5c22f29ab64331cb6d49ed157a8b718f51ffcdbab862ed4f1967ea4"
+    },
+    {
+     "path": "id=5.slots.1.status.landed.tx",
+     "equals": "0x01d641d578624d6a25bd5717c0e8735de5f404df1281bc7179cca4c5e644cb7c"
+    }
+   ]
+  },
+  {
+   "id": "E14",
+   "source": "README, Evidence on testnet (Market mode)",
+   "chain": "base",
+   "type": "base_receipt",
+   "claim": "Base approve of op 5 succeeded, from the vault address, Approval of 32 USDC to the pool",
+   "tx": "0x6a040032e5c22f29ab64331cb6d49ed157a8b718f51ffcdbab862ed4f1967ea4",
+   "expect": {
+    "status": 1,
+    "from": "@vault",
+    "value_zero": true,
+    "to": "@usdc",
+    "logs": [
+     {
+      "address": "@usdc",
+      "topics": [
+       "Approval",
+       "@vault",
+       "@pool"
+      ],
+      "amount": "32000000"
+     }
+    ]
+   }
+  },
+  {
+   "id": "E15",
+   "source": "README, Evidence on testnet (Market mode)",
+   "chain": "base",
+   "type": "base_receipt",
+   "claim": "Base supply of op 5 succeeded, from the vault address, Supply of 32 USDC on behalf of the vault",
+   "tx": "0x01d641d578624d6a25bd5717c0e8735de5f404df1281bc7179cca4c5e644cb7c",
+   "expect": {
+    "status": 1,
+    "from": "@vault",
+    "value_zero": true,
+    "to": "@pool",
+    "logs": [
+     {
+      "address": "@pool",
+      "topics": [
+       "Supply",
+       "@usdc",
+       "@vault",
+       null
+      ],
+      "amount": "32000000",
+      "amount_word": 1
+     }
+    ]
+   }
+  },
+  {
+   "id": "E16",
+   "source": "README, Evidence on testnet (Prompt-injected refusal)",
+   "chain": "near",
+   "type": "near_tx",
+   "claim": "A prompt-injected agent request is refused on-chain with not_allowed (the tx itself succeeds and records the refusal)",
+   "tx": "HJpPuZGpPKbL2BDHcD6DerxQEaRpJ3nCWVTjR2g9Sn2p",
+   "signer": "vault.bridle-hq.testnet",
+   "expect": {
+    "outcome": "success",
+    "receiver": "vault.bridle-hq.testnet",
+    "logs_contain": [
+     "\"event\":\"rejected\"",
+     "\"method\":\"agent_act\"",
+     "\"reason\":\"not_allowed\""
+    ],
+    "value_contains": [
+     "\"ok\":false",
+     "\"reason\":\"not_allowed\""
+    ]
+   }
+  },
+  {
+   "id": "E17",
+   "source": "README, Evidence on testnet (Refusals), README What Bridle does (public ledger)",
+   "chain": "near",
+   "type": "vault_view",
+   "claim": "The vault's public rejection ledger holds the refusals the live runs produced (19 recorded, with these reasons)",
+   "account": "vault.bridle-hq.testnet",
+   "method": "get_rejections",
+   "assert": [
+    {
+     "path": "count",
+     "gte": "19"
+    },
+    {
+     "path": "recent.*.reason.reason",
+     "includes": "not_allowed"
+    },
+    {
+     "path": "recent.*.reason.reason",
+     "includes": "above_agent_max"
+    },
+    {
+     "path": "recent.*.reason.reason",
+     "includes": "not_tighter"
+    },
+    {
+     "path": "recent.*.reason.reason",
+     "includes": "paused"
+    },
+    {
+     "path": "recent.*.reason.reason",
+     "includes": "pause_cooldown"
+    }
+   ]
+  },
+  {
+   "id": "E18",
+   "source": "README, Evidence on testnet (Parked outflow)",
+   "chain": "near",
+   "type": "near_tx",
+   "claim": "A DAO outflow of 15 USDC above the fast limit is parked in the long lane (DAO execution tx)",
+   "tx": "zrdqbqfagmSo2PiPdi2RyzZgvatfoU3mWgiN5Qnx8KT",
+   "signer": "bridle-hq.testnet",
+   "expect": {
+    "outcome": "success",
+    "receiver": "bridle-hq.sputnik-v2.testnet",
+    "logs_contain": [
+     "\"event\":\"parked\"",
+     "\"id\":0",
+     "\"lane\":\"Long\""
+    ]
+   }
+  },
+  {
+   "id": "E19",
+   "source": "README, Evidence on testnet (Parked outflow)",
+   "chain": "near",
+   "type": "near_tx",
+   "claim": "A guardian vetoes the parked item (id 0)",
+   "tx": "3ii5JKgNy5hdqvdSDXd2fKSMFXnwv6ZAejzNv9sGsrwf",
+   "signer": "vault.bridle-hq.testnet",
+   "expect": {
+    "outcome": "success",
+    "receiver": "vault.bridle-hq.testnet",
+    "logs_contain": [
+     "\"event\":\"vetoed\"",
+     "\"id\":0"
+    ]
+   }
+  },
+  {
+   "id": "E20",
+   "source": "README, Evidence on testnet (Parked outflow)",
+   "chain": "near",
+   "type": "vault_view",
+   "claim": "Parked queue: item 0 is an outflow of 15 USDC in the long lane, status vetoed",
+   "account": "vault.bridle-hq.testnet",
+   "method": "get_parked",
+   "assert": [
+    {
+     "path": "id=0.kind.kind",
+     "equals": "outflow"
+    },
+    {
+     "path": "id=0.kind.amount",
+     "equals": "15000000"
+    },
+    {
+     "path": "id=0.lane",
+     "equals": "long"
+    },
+    {
+     "path": "id=0.status",
+     "equals": "vetoed"
+    }
+   ]
+  },
+  {
+   "id": "E21",
+   "source": "README, Evidence on testnet (Upgrade)",
+   "chain": "near",
+   "type": "near_tx",
+   "claim": "An upgrade is parked by code hash in the long lane (DAO execution tx, item 3)",
+   "tx": "5UoXMTVV3RDmarhoe4nWMHFrU1m3r7tZ8MFCkRMkBTmD",
+   "signer": "bridle-hq.testnet",
+   "expect": {
+    "outcome": "success",
+    "receiver": "bridle-hq.sputnik-v2.testnet",
+    "logs_contain": [
+     "\"event\":\"parked\"",
+     "\"id\":3",
+     "\"lane\":\"Long\""
+    ]
+   }
+  },
+  {
+   "id": "E22",
+   "source": "README, Evidence on testnet (Upgrade)",
+   "chain": "near",
+   "type": "vault_view",
+   "claim": "Upgrade is refused early (not_yet_unlocked) and with other code (code_hash_mismatch); both are in the rejection ledger",
+   "account": "vault.bridle-hq.testnet",
+   "method": "get_rejections",
+   "assert": [
+    {
+     "path": "recent.*.reason.reason",
+     "includes": "not_yet_unlocked"
+    },
+    {
+     "path": "recent.*.reason.reason",
+     "includes": "code_hash_mismatch"
+    },
+    {
+     "path": "recent.*.method",
+     "includes": "execute_upgrade"
+    }
+   ]
+  },
+  {
+   "id": "E23",
+   "source": "README, Evidence on testnet (Upgrade)",
+   "chain": "near",
+   "type": "near_tx",
+   "claim": "The upgrade is applied after the window: upgrading and migrated events, return value names the parked code hash",
+   "tx": "BdeP6faLEbqFNx3frD7uhA8BoYyFMhPArJFVRBnrTwnD",
+   "signer": "bridle-hq.testnet",
+   "expect": {
+    "outcome": "success",
+    "receiver": "vault.bridle-hq.testnet",
+    "logs_contain": [
+     "\"event\":\"upgrading\"",
+     "\"event\":\"migrated\""
+    ],
+    "value_contains": [
+     "0x9acdbfd830d86d2ad6abb37c3cf88d686f622714e2a42f41e1e2feec7b29b2c9"
+    ]
+   }
+  },
+  {
+   "id": "E24",
+   "source": "README, Evidence on testnet (Upgrade)",
+   "chain": "near",
+   "type": "vault_view",
+   "claim": "Parked item 3 is that upgrade, pinned by code hash 0x9acd..., status executed",
+   "account": "vault.bridle-hq.testnet",
+   "method": "get_parked",
+   "assert": [
+    {
+     "path": "id=3.kind.kind",
+     "equals": "upgrade"
+    },
+    {
+     "path": "id=3.kind.code_hash",
+     "equals": "0x9acdbfd830d86d2ad6abb37c3cf88d686f622714e2a42f41e1e2feec7b29b2c9"
+    },
+    {
+     "path": "id=3.status",
+     "equals": "executed"
+    }
+   ]
+  },
+  {
+   "id": "E25",
+   "source": "docs/PROGRESS.md (v2 upgrade of both vaults)",
+   "chain": "near",
+   "type": "near_tx",
+   "claim": "Main vault upgraded to the v2 code (historic hash, see historic_code_hashes) through the parked path, with migrate",
+   "tx": "GVPJyDt4Tg8ZAfFcahvSaNFVLYHe84m5NaWRV4GEwXss",
+   "signer": "bridle-hq.testnet",
+   "expect": {
+    "outcome": "success",
+    "receiver": "vault.bridle-hq.testnet",
+    "logs_contain": [
+     "\"event\":\"migrated\""
+    ],
+    "value_contains": [
+     "{{historic.v2_code_hash}}"
+    ]
+   }
+  },
+  {
+   "id": "E26",
+   "source": "docs/PROGRESS.md (v2 upgrade of both vaults)",
+   "chain": "near",
+   "type": "near_tx",
+   "claim": "Arena vault upgraded to the same v2 code (historic hash) through the parked path, with migrate",
+   "tx": "H5CdENCopiRZSM3Zop8oSCfGaA5Q4T8Pjou93Eqf7iS2",
+   "signer": "bridle-hq.testnet",
+   "expect": {
+    "outcome": "success",
+    "receiver": "arena.bridle-hq.testnet",
+    "logs_contain": [
+     "\"event\":\"migrated\""
+    ],
+    "value_contains": [
+     "{{historic.v2_code_hash}}"
+    ]
+   }
+  },
+  {
+   "id": "E27",
+   "source": "docs/PROGRESS.md (v2 upgrade of both vaults)",
+   "chain": "near",
+   "type": "code_hash",
+   "claim": "Deployed code of vault.bridle-hq.testnet equals sha256 of deploy/prebuilt/bridle_vault.wasm",
+   "account": "vault.bridle-hq.testnet"
+  },
+  {
+   "id": "E28",
+   "source": "docs/PROGRESS.md (v2 upgrade of both vaults)",
+   "chain": "near",
+   "type": "code_hash",
+   "claim": "Deployed code of arena.bridle-hq.testnet equals sha256 of deploy/prebuilt/bridle_vault.wasm",
+   "account": "arena.bridle-hq.testnet"
+  },
+  {
+   "id": "E29",
+   "source": "deploy/prebuilt/README.md",
+   "chain": "local",
+   "type": "prebuilt_sums",
+   "claim": "deploy/prebuilt/SHA256SUMS matches the vault and mock-signer wasm files"
+  },
+  {
+   "id": "E30",
+   "source": "docs/PROGRESS.md (v2 upgrade of both vaults)",
+   "chain": "near",
+   "type": "vault_view",
+   "claim": "Main vault reports state_version 2 or later after the v1 to v2 migration and keeps its ledger (credited 50 USDC)",
+   "account": "vault.bridle-hq.testnet",
+   "method": "get_state",
+   "assert": [
+    {
+     "path": "state_version",
+     "gte": "2"
+    },
+    {
+     "path": "ledger.total_credited",
+     "equals": "50000000"
+    }
+   ]
+  },
+  {
+   "id": "E31",
+   "source": "docs/PROGRESS.md (v2 upgrade of both vaults)",
+   "chain": "near",
+   "type": "vault_view",
+   "claim": "Arena vault reports state_version 2 or later and keeps its ledger (credited 25 USDC)",
+   "account": "arena.bridle-hq.testnet",
+   "method": "get_state",
+   "assert": [
+    {
+     "path": "state_version",
+     "gte": "2"
+    },
+    {
+     "path": "ledger.total_credited",
+     "equals": "25000000"
+    }
+   ]
+  },
+  {
+   "id": "E32",
+   "source": "docs/PROGRESS.md (arena upgrades)",
+   "chain": "near",
+   "type": "vault_view",
+   "claim": "Arena parked queue: the first two upgrades were parked by code hash and executed; item 1 is the v2 code hash",
+   "account": "arena.bridle-hq.testnet",
+   "method": "get_parked",
+   "assert": [
+    {
+     "path": "id=0.kind.kind",
+     "equals": "upgrade"
+    },
+    {
+     "path": "id=0.status",
+     "equals": "executed"
+    },
+    {
+     "path": "id=1.kind.code_hash",
+     "equals": "{{historic.v2_code_hash}}"
+    },
+    {
+     "path": "id=1.status",
+     "equals": "executed"
+    }
+   ]
+  },
+  {
+   "id": "E33",
+   "source": "README, Evidence on testnet (Arena)",
+   "chain": "near",
+   "type": "vault_view",
+   "claim": "Arena refusals are recorded in its public ledger (at least 7 so far, including not_allowed)",
+   "account": "arena.bridle-hq.testnet",
+   "method": "get_rejections",
+   "assert": [
+    {
+     "path": "count",
+     "gte": "7"
+    },
+    {
+     "path": "recent.*.reason.reason",
+     "includes": "not_allowed"
+    }
+   ]
+  },
+  {
+   "id": "L01",
+   "source": "docs/PROGRESS.md (live suite: withdraw)",
+   "chain": "near",
+   "type": "near_tx",
+   "claim": "Agent withdraw of 5 USDC is accepted and the MPC signs it",
+   "tx": "7HRmvSCniCPuLfvBM968HCastpxYLSR5SRKUrponNf5p",
+   "signer": "vault.bridle-hq.testnet",
+   "expect": {
+    "outcome": "success",
+    "receiver": "vault.bridle-hq.testnet",
+    "logs_contain": [
+     "\"event\":\"op_started\"",
+     "Withdraw { amount: 5000000 }",
+     "\"event\":\"signed\""
+    ]
+   }
+  },
+  {
+   "id": "L02",
+   "source": "docs/PROGRESS.md (live suite: withdraw)",
+   "chain": "near",
+   "type": "vault_view",
+   "claim": "Vault ledger op 2: withdraw landed by attestation, op done",
+   "account": "vault.bridle-hq.testnet",
+   "method": "get_ops",
+   "assert": [
+    {
+     "path": "id=2.status",
+     "equals": "done"
+    },
+    {
+     "path": "id=2.slots.0.status.landed.tx",
+     "equals": "0x1b2f4d19057432facbba473cf293412f4d94f3dce344d800b4de30b522928c9e"
+    }
+   ]
+  },
+  {
+   "id": "L03",
+   "source": "docs/PROGRESS.md (live suite: withdraw)",
+   "chain": "base",
+   "type": "base_receipt",
+   "claim": "Base Aave withdraw of 5 USDC succeeded, from the vault address, Withdraw log paid to the vault",
+   "tx": "0x1b2f4d19057432facbba473cf293412f4d94f3dce344d800b4de30b522928c9e",
+   "expect": {
+    "status": 1,
+    "from": "@vault",
+    "value_zero": true,
+    "to": "@pool",
+    "logs": [
+     {
+      "address": "@pool",
+      "topics": [
+       "Withdraw",
+       "@usdc",
+       "@vault",
+       "@vault"
+      ],
+      "amount": "5000000"
+     }
+    ]
+   }
+  },
+  {
+   "id": "L04",
+   "source": "docs/PROGRESS.md (live suite: cancel)",
+   "chain": "near",
+   "type": "vault_view",
+   "claim": "Guardian cancel: op 3 is aborted, its approve slot was settled by the cancel tx, the supply slot was never reserved",
+   "account": "vault.bridle-hq.testnet",
+   "method": "get_ops",
+   "assert": [
+    {
+     "path": "id=3.status",
+     "equals": "aborted"
+    },
+    {
+     "path": "id=3.slots.0.status.landed.which",
+     "equals": "cancel"
+    },
+    {
+     "path": "id=3.slots.0.status.landed.tx",
+     "equals": "0x1e869c309aa52e5db2d4026b075caca5220a6ff1b11d4f5caf19dd9630828394"
+    },
+    {
+     "path": "id=3.slots.1.status",
+     "equals": "unreserved"
+    }
+   ]
+  },
+  {
+   "id": "L05",
+   "source": "docs/PROGRESS.md (live suite: cancel)",
+   "chain": "base",
+   "type": "base_receipt",
+   "claim": "The cancel tx (21000 gas self-transfer at the stuck nonce 4) succeeded on Base, from the vault address to itself",
+   "tx": "0x1e869c309aa52e5db2d4026b075caca5220a6ff1b11d4f5caf19dd9630828394",
+   "expect": {
+    "status": 1,
+    "from": "@vault",
+    "value_zero": true,
+    "to": "@vault",
+    "nonce": 4,
+    "gas_used": 21000,
+    "logs_count": 0
+   }
+  },
+  {
+   "id": "L06",
+   "source": "docs/PROGRESS.md (live suite: cancel)",
+   "chain": "base",
+   "type": "base_never_mined",
+   "claim": "The replaced approve (same nonce 4) was never mined",
+   "tx": "0xe0f4f137260ece01466f6e769d86c9ca03f6be646325546558751d4f5fb022fb"
+  },
+  {
+   "id": "L07",
+   "source": "docs/PROGRESS.md (live suite: policy, guardians, pause)",
+   "chain": "near",
+   "type": "vault_view",
+   "claim": "Parked queue: policy loosening executed after the short lane, guardian addition executed after the long lane",
+   "account": "vault.bridle-hq.testnet",
+   "method": "get_parked",
+   "assert": [
+    {
+     "path": "id=1.kind.kind",
+     "equals": "policy"
+    },
+    {
+     "path": "id=1.lane",
+     "equals": "short"
+    },
+    {
+     "path": "id=1.status",
+     "equals": "executed"
+    },
+    {
+     "path": "id=2.kind.kind",
+     "equals": "add_guardian"
+    },
+    {
+     "path": "id=2.lane",
+     "equals": "long"
+    },
+    {
+     "path": "id=2.status",
+     "equals": "executed"
+    }
+   ]
+  },
+  {
+   "id": "L08",
+   "source": "docs/PROGRESS.md (live suite: unwind)",
+   "chain": "near",
+   "type": "vault_view",
+   "claim": "Guardian unwind ops 4 and 6 are done, withdrawn by attestation (no dao_resolve) ",
+   "account": "vault.bridle-hq.testnet",
+   "method": "get_ops",
+   "assert": [
+    {
+     "path": "id=4.action.action",
+     "equals": "unwind"
+    },
+    {
+     "path": "id=4.status",
+     "equals": "done"
+    },
+    {
+     "path": "id=4.slots.0.status.landed.tx",
+     "equals": "0x7981072f86c6f07c0ca9ef2ff7b8827777b002fc326bf68318c83634aa63e63e"
+    },
+    {
+     "path": "id=6.action.action",
+     "equals": "unwind"
+    },
+    {
+     "path": "id=6.status",
+     "equals": "done"
+    },
+    {
+     "path": "id=6.slots.0.status.landed.tx",
+     "equals": "0x410c8c8a6d4834de09028d330e6f5427307e22c7f70f5df2b716c3fa48c04a3c"
+    }
+   ]
+  },
+  {
+   "id": "L09",
+   "source": "docs/PROGRESS.md (live suite: unwind)",
+   "chain": "base",
+   "type": "base_receipt",
+   "claim": "Base unwind of op 4: Aave Withdraw of 25 USDC to the vault address, from the vault address",
+   "tx": "0x7981072f86c6f07c0ca9ef2ff7b8827777b002fc326bf68318c83634aa63e63e",
+   "expect": {
+    "status": 1,
+    "from": "@vault",
+    "value_zero": true,
+    "to": "@pool",
+    "logs": [
+     {
+      "address": "@pool",
+      "topics": [
+       "Withdraw",
+       "@usdc",
+       "@vault",
+       "@vault"
+      ],
+      "amount": "25000000"
+     }
+    ]
+   }
+  },
+  {
+   "id": "L10",
+   "source": "docs/PROGRESS.md (live suite: unwind)",
+   "chain": "base",
+   "type": "base_receipt",
+   "claim": "Base unwind of op 6 succeeded: Aave Withdraw to the vault address, from the vault address",
+   "tx": "0x410c8c8a6d4834de09028d330e6f5427307e22c7f70f5df2b716c3fa48c04a3c",
+   "expect": {
+    "status": 1,
+    "from": "@vault",
+    "value_zero": true,
+    "to": "@pool",
+    "logs": [
+     {
+      "address": "@pool",
+      "topics": [
+       "Withdraw",
+       "@usdc",
+       "@vault",
+       "@vault"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "L11",
+   "source": "docs/PROGRESS.md (live suite: DAO outflow)",
+   "chain": "near",
+   "type": "vault_view",
+   "claim": "DAO fast outflow of 10 USDC to the treasury: op 1 done by attestation, 10 USDC sent in the ledger",
+   "account": "vault.bridle-hq.testnet",
+   "method": "get_ops",
+   "assert": [
+    {
+     "path": "id=1.origin",
+     "equals": "dao"
+    },
+    {
+     "path": "id=1.action.action",
+     "equals": "send_to_treasury"
+    },
+    {
+     "path": "id=1.status",
+     "equals": "done"
+    },
+    {
+     "path": "id=1.slots.0.status.landed.tx",
+     "equals": "0x242364d94430ee1a7d419621eb322ca0efd4702c37258c5bf5238a14f9a6ec96"
+    }
+   ]
+  },
+  {
+   "id": "L12",
+   "source": "docs/PROGRESS.md (live suite: DAO outflow)",
+   "chain": "base",
+   "type": "base_receipt",
+   "claim": "Base transfer of op 1: USDC Transfer of 10 USDC from the vault address to the treasury address",
+   "tx": "0x242364d94430ee1a7d419621eb322ca0efd4702c37258c5bf5238a14f9a6ec96",
+   "expect": {
+    "status": 1,
+    "from": "@vault",
+    "value_zero": true,
+    "to": "@usdc",
+    "logs": [
+     {
+      "address": "@usdc",
+      "topics": [
+       "Transfer",
+       "@vault",
+       "@treasury"
+      ],
+      "amount": "10000000"
+     }
+    ]
+   }
+  },
+  {
+   "id": "L13",
+   "source": "docs/PROGRESS.md (post-migration smoke)",
+   "chain": "near",
+   "type": "near_tx",
+   "claim": "After the v2 migration the agent's supply of 31.9999 USDC is accepted",
+   "tx": "D9aTFVoX47CbYSB29bN4z7agRtASLvfrVsHn7Aqo4EHE",
+   "signer": "vault.bridle-hq.testnet",
+   "expect": {
+    "outcome": "success",
+    "receiver": "vault.bridle-hq.testnet",
+    "logs_contain": [
+     "Supply { amount: 31999900 }",
+     "\"event\":\"signed\""
+    ],
+    "value_contains": [
+     "\"ok\":true"
+    ]
+   }
+  },
+  {
+   "id": "L14",
+   "source": "docs/PROGRESS.md (post-migration smoke)",
+   "chain": "near",
+   "type": "vault_view",
+   "claim": "Vault ledger op 7: both steps landed by attestation, op done",
+   "account": "vault.bridle-hq.testnet",
+   "method": "get_ops",
+   "assert": [
+    {
+     "path": "id=7.status",
+     "equals": "done"
+    },
+    {
+     "path": "id=7.slots.0.status.landed.tx",
+     "equals": "0x15bb8b893441f27bd2ad9c51edecfdacb0c75fd605f294c77ae69d4b9817a9f7"
+    },
+    {
+     "path": "id=7.slots.1.status.landed.tx",
+     "equals": "0x865e719b49ae03651c42912e3a1bb92de37f1dacb25eac31a6311b90479a9547"
+    }
+   ]
+  },
+  {
+   "id": "L15",
+   "source": "docs/PROGRESS.md (post-migration smoke)",
+   "chain": "base",
+   "type": "base_receipt",
+   "claim": "Base supply of op 7 succeeded: Supply of 31.9999 USDC on behalf of the vault",
+   "tx": "0x865e719b49ae03651c42912e3a1bb92de37f1dacb25eac31a6311b90479a9547",
+   "expect": {
+    "status": 1,
+    "from": "@vault",
+    "value_zero": true,
+    "to": "@pool",
+    "logs": [
+     {
+      "address": "@pool",
+      "topics": [
+       "Supply",
+       "@usdc",
+       "@vault",
+       null
+      ],
+      "amount": "31999900",
+      "amount_word": 1
+     }
+    ]
+   }
+  },
+  {
+   "id": "L16",
+   "source": "README, What holds (Landed means attested)",
+   "chain": "near",
+   "type": "vault_view",
+   "claim": "No operation in the main vault's ledger was settled by the DAO's trusted dao_resolve",
+   "account": "vault.bridle-hq.testnet",
+   "method": "get_ops",
+   "assert": [
+    {
+     "path": "$",
+     "not_contains": "trusted_landed"
+    }
+   ]
+  },
+  {
+   "id": "L17",
+   "source": "README, What holds (Landed means attested)",
+   "chain": "near",
+   "type": "vault_view",
+   "claim": "No operation in the arena vault's ledger was settled by dao_resolve",
+   "account": "arena.bridle-hq.testnet",
+   "method": "get_ops",
+   "assert": [
+    {
+     "path": "$",
+     "not_contains": "trusted_landed"
+    }
+   ]
+  },
+  {
+   "id": "L18",
+   "source": "docs/PROGRESS.md (DAO)",
+   "chain": "near",
+   "type": "near_tx",
+   "claim": "The owner DAO (Sputnik) was created in one tx",
+   "tx": "DivTyMizcMJz6SPV5mtDhtKKp5uPrVFFbkSNKkMQ4dwL",
+   "signer": "bridle-probe-1028.testnet",
+   "expect": {
+    "outcome": "success",
+    "receiver": "sputnik-v2.testnet",
+    "value_contains": [
+     "true"
+    ]
+   }
+  },
+  {
+   "id": "L19",
+   "source": "docs/PROGRESS.md (Testnet deployment)",
+   "chain": "near",
+   "type": "vault_view",
+   "claim": "The vault's owner is the DAO and it uses the testnet MPC signer, chain id 84532",
+   "account": "vault.bridle-hq.testnet",
+   "method": "get_state",
+   "assert": [
+    {
+     "path": "owner",
+     "equals": "bridle-hq.sputnik-v2.testnet"
+    },
+    {
+     "path": "signer",
+     "equals": "v1.signer-prod.testnet"
+    },
+    {
+     "path": "chain.chain_id",
+     "equals": "84532"
+    }
+   ]
+  },
+  {
+   "id": "S01",
+   "source": "README, What holds (Construct-only signing)",
+   "chain": "near",
+   "type": "policy_matches_deploy",
+   "claim": "The on-chain mandate, floors and signing targets (USDC, Aave pool, aToken, chain id) of the vault equal deploy/testnet.json",
+   "account": "vault.bridle-hq.testnet"
+  },
+  {
+   "id": "S02",
+   "source": "README, What holds (Construct-only signing)",
+   "chain": "near",
+   "type": "policy_matches_deploy",
+   "claim": "The arena vault has the same mandate, floors and signing targets",
+   "account": "arena.bridle-hq.testnet"
+  },
+  {
+   "id": "S03",
+   "source": "README, What holds (Construct-only signing)",
+   "chain": "near",
+   "type": "derived_address",
+   "claim": "The vault's Base address is the MPC-derived key of (vault account, path bridle): bound to this contract",
+   "predecessor": "vault.bridle-hq.testnet",
+   "path": "bridle",
+   "equals": "@vault"
+  },
+  {
+   "id": "S04",
+   "source": "README, What holds (Construct-only signing)",
+   "chain": "near",
+   "type": "derived_address",
+   "claim": "The arena vault's Base address is the MPC-derived key of (arena account, path bridle)",
+   "predecessor": "arena.bridle-hq.testnet",
+   "path": "bridle",
+   "equals": "@arena_vault"
+  },
+  {
+   "id": "S05",
+   "source": "docs/PROGRESS.md (Testnet deployment)",
+   "chain": "near",
+   "type": "derived_address",
+   "claim": "The treasury is the DAO-derived Base address (DAO account, path treasury), and the vault's mandate names it",
+   "predecessor": "bridle-hq.sputnik-v2.testnet",
+   "path": "treasury",
+   "equals": "@treasury"
+  },
+  {
+   "id": "S06",
+   "source": "README, What holds (Construct-only signing)",
+   "chain": "near",
+   "type": "vault_view",
+   "claim": "The vault's mandate names exactly that treasury address",
+   "account": "vault.bridle-hq.testnet",
+   "method": "get_state",
+   "assert": [
+    {
+     "path": "policy.treasury",
+     "equals": "@treasury"
+    },
+    {
+     "path": "chain.vault",
+     "equals": "@vault"
+    }
+   ]
+  },
+  {
+   "id": "S07",
+   "source": "README, What holds (Construct-only signing)",
+   "chain": "near",
+   "type": "vault_view",
+   "claim": "The arena vault's Base address on chain equals the address used in its claims",
+   "account": "arena.bridle-hq.testnet",
+   "method": "get_state",
+   "assert": [
+    {
+     "path": "chain.vault",
+     "equals": "@arena_vault"
+    },
+    {
+     "path": "policy.treasury",
+     "equals": "@treasury"
+    }
+   ]
+  },
+  {
+   "id": "S08",
+   "source": "README, What holds (Reservations move only on proof)",
+   "chain": "near",
+   "type": "nonce_vs_chain",
+   "claim": "Vault next_nonce equals the Base account nonce of its address (no signed tx unaccounted for)",
+   "account": "vault.bridle-hq.testnet"
+  },
+  {
+   "id": "S09",
+   "source": "README, What holds (Reservations move only on proof)",
+   "chain": "near",
+   "type": "nonce_vs_chain",
+   "claim": "Arena vault next_nonce equals the Base account nonce of its address",
+   "account": "arena.bridle-hq.testnet"
+  },
+  {
+   "id": "S10",
+   "source": "docs/PROGRESS.md (final state), README, Aave rounding",
+   "chain": "base",
+   "type": "ledger_vs_chain",
+   "claim": "Vault ledger matches Base: idle = USDC balance at the vault address, principal = aUSDC within 100 base units of Aave rounding, treasury holds what was sent",
+   "account": "vault.bridle-hq.testnet",
+   "dust": 100,
+   "check_sent": true
+  },
+  {
+   "id": "S11",
+   "source": "docs/PROGRESS.md (final state), README, Aave rounding",
+   "chain": "base",
+   "type": "ledger_vs_chain",
+   "claim": "Arena ledger matches Base: idle = USDC, principal = aUSDC within 100 base units",
+   "account": "arena.bridle-hq.testnet",
+   "dust": 100
+  },
+  {
+   "id": "M01",
+   "source": "docs/evidence/live-tests.md section 1",
+   "chain": "base",
+   "type": "base_receipt",
+   "claim": "Probe: faucet mint, built in the contract and MPC-signed, succeeded on Base Sepolia (87,902 gas)",
+   "tx": "0x3ccb265dc456a3f4a17b0f0646897159d0f60d797e0b363749a719c69a45c1c8",
+   "expect": {
+    "status": 1,
+    "from": "@probe_vault",
+    "gas_used": 87902
+   }
+  },
+  {
+   "id": "M02",
+   "source": "docs/evidence/live-tests.md section 1",
+   "chain": "base",
+   "type": "base_receipt",
+   "claim": "Probe: approve(AavePool, 50) succeeded (46,248 gas), sent from the probe's derived address",
+   "tx": "0x4a86454c0d23c3b8e7b8056eb23c6bcdd039014ef7e7093770377d376ea1549b",
+   "expect": {
+    "status": 1,
+    "from": "@probe_vault",
+    "gas_used": 46248,
+    "logs": [
+     {
+      "address": "@usdc",
+      "topics": [
+       "Approval",
+       "@probe_vault",
+       "@pool"
+      ],
+      "amount": "50000000"
+     }
+    ]
+   }
+  },
+  {
+   "id": "M03",
+   "source": "docs/evidence/live-tests.md section 1",
+   "chain": "base",
+   "type": "base_receipt",
+   "claim": "Probe: Aave supply of 50 USDC succeeded (189,407 gas), Supply log index 24, on behalf of the probe address",
+   "tx": "0x99aba362ef6b3dc05c5f33fa589009f3c22cc75bf528e1803e831d87fd7fd110",
+   "expect": {
+    "status": 1,
+    "from": "@probe_vault",
+    "gas_used": 189407,
+    "logs": [
+     {
+      "address": "@pool",
+      "topics": [
+       "Supply",
+       "@usdc",
+       "@probe_vault",
+       null
+      ],
+      "amount": "50000000",
+      "amount_word": 1,
+      "log_index": 24
+     }
+    ]
+   }
+  },
+  {
+   "id": "M04",
+   "source": "docs/evidence/live-tests.md",
+   "chain": "near",
+   "type": "near_tx",
+   "claim": "Probe: the contract's verify_foreign_transaction call returned verified: true with payload_hash 85a2f5c9...064b",
+   "tx": "4XKrqTukrh19EdTxhc18siAHE5QUBxw9ZQ69q7nxUYar",
+   "signer": "bridle-probe-1028.testnet",
+   "expect": {
+    "outcome": "success",
+    "receiver": "bridle-vault-probe.testnet",
+    "value_contains": [
+     "\"verified\":true",
+     "85a2f5c95f8fe803e284e3cb2e8deca489f91ff89a09ef2f815f424766ac064b"
+    ]
+   }
+  },
+  {
+   "id": "M05",
+   "source": "docs/evidence/live-tests.md attack A",
+   "chain": "near",
+   "type": "near_tx",
+   "claim": "Attack A: asking v1.signer to sign with path bridle as another account signs for that account's own key, not the vault's (predecessor is the attacker)",
+   "tx": "12FPcJxbwHEPvAsbtZDJB5NBPkD4xjZQ1FGgt6n75mzG",
+   "signer": "bridle-attacker-1028.testnet",
+   "expect": {
+    "outcome": "success",
+    "receiver": "v1.signer-prod.testnet",
+    "logs_contain": [
+     "predecessor=AccountId(\"bridle-attacker-1028.testnet\")",
+     "path: \"bridle\""
+    ]
+   }
+  },
+  {
+   "id": "M06",
+   "source": "docs/evidence/live-tests.md attack B",
+   "chain": "near",
+   "type": "near_tx",
+   "claim": "Attack B: calling the vault's #[private] callback from another account fails with Method on_signed_call is private",
+   "tx": "Hq2bDZnXdVAdpYyYTnWQfjh7GqC9dn7Jj3YQUerkbiKb",
+   "signer": "bridle-probe-1028.testnet",
+   "expect": {
+    "outcome": "failure",
+    "receiver": "bridle-vault-probe.testnet",
+    "error_contains": "Method on_signed_call is private"
+   }
+  },
+  {
+   "id": "M07",
+   "source": "docs/evidence/live-tests.md attack C",
+   "chain": "near",
+   "type": "near_tx",
+   "claim": "Attack C: the probe's unguarded signing method signs a transfer for anyone (why all policy must live in the vault)",
+   "tx": "EVtAc1npBKNknLEYzBvVDDWZxPG9So1CqsrjMTnhtHev",
+   "signer": "bridle-attacker-1028.testnet",
+   "expect": {
+    "outcome": "success",
+    "receiver": "bridle-vault-probe.testnet",
+    "value_contains": [
+     "\"raw_tx\":\"0x02f8b283014a34"
+    ]
+   }
+  },
+  {
+   "id": "M08",
+   "source": "docs/evidence/live-tests.md T11",
+   "chain": "near",
+   "type": "near_tx",
+   "claim": "T11: a key on the vault account itself passes #[private] and fails only on the missing promise result (so callbacks read facts from the promise)",
+   "tx": "4AaJ4Tvk9YGqGdGUbWGVjxrnPhzKYVVHQzSakB6e2RUC",
+   "signer": "bridle-vault-probe.testnet",
+   "expect": {
+    "outcome": "failure",
+    "receiver": "bridle-vault-probe.testnet",
+    "error_contains": "Accessed invalid promise result index: 0"
+   }
+  },
+  {
+   "id": "M09",
+   "source": "docs/evidence/live-tests.md T1",
+   "chain": "near",
+   "type": "near_tx",
+   "claim": "T1: a Sputnik proposal to the probe vault is created",
+   "tx": "6ejGXPAdwwQhqqh34eyiNxG6Wo3yZ33HTwQLZ69WptsU",
+   "signer": "bridle-dao-probe-45849.testnet",
+   "expect": {
+    "outcome": "success",
+    "receiver": "probedao45849.sputnik-v2.testnet"
+   }
+  },
+  {
+   "id": "M10",
+   "source": "docs/evidence/live-tests.md T1",
+   "chain": "near",
+   "type": "near_tx",
+   "claim": "T1: one DAO vote produced a signed raw Base tx in one transaction chain (act_proposal returns raw_tx)",
+   "tx": "7axw5vjnUGHCH9f84GM97h9pAhqwr59qDQQdaNVGPJFZ",
+   "signer": "bridle-dao-probe-45849.testnet",
+   "expect": {
+    "outcome": "success",
+    "receiver": "probedao45849.sputnik-v2.testnet",
+    "logs_contain": [
+     "sign: predecessor=AccountId(\"bridle-vault-probe.testnet\")"
+    ],
+    "value_contains": [
+     "\"raw_tx\":\"0x02f8b283014a34"
+    ]
+   }
+  },
+  {
+   "id": "M11",
+   "source": "docs/evidence/live-tests.md T2",
+   "chain": "base",
+   "type": "base_receipt",
+   "claim": "T2: the DAO-signed USDC.transfer(0xdead, 1e12) reverted on Base: status 0, no logs",
+   "tx": "0x459c47714f705349ac2c51fbacfff68820e21962a059017d1d4729705cd9457d",
+   "expect": {
+    "status": 0,
+    "from": "@probe_vault",
+    "logs_count": 0
+   }
+  },
+  {
+   "id": "M12",
+   "source": "docs/evidence/live-tests.md T6",
+   "chain": "base",
+   "type": "base_receipt",
+   "claim": "T6: exit path, Aave withdraw of 10 USDC to the probe address succeeded (status 1)",
+   "tx": "0x50269dd948de8737ef2dca04849416bfbf471b7a0a3915b2690819f3dc7dea9a",
+   "expect": {
+    "status": 1,
+    "from": "@probe_vault",
+    "to": "@pool",
+    "logs": [
+     {
+      "address": "@usdc",
+      "topics": [
+       "Transfer",
+       null,
+       "@probe_vault"
+      ],
+      "amount": "10000000"
+     }
+    ]
+   }
+  },
+  {
+   "id": "M13",
+   "source": "docs/evidence/live-tests.md T6",
+   "chain": "base",
+   "type": "base_receipt",
+   "claim": "T6: exit path, USDC transfer of 10 USDC from the probe address succeeded (status 1)",
+   "tx": "0x019127cbfdc734a3bc891036fca205d368678be22c97362a33531659202688cf",
+   "expect": {
+    "status": 1,
+    "from": "@probe_vault",
+    "to": "@usdc",
+    "logs": [
+     {
+      "address": "@usdc",
+      "topics": [
+       "Transfer",
+       "@probe_vault",
+       null
+      ],
+      "amount": "10000000"
+     }
+    ]
+   }
+  },
+  {
+   "id": "M14",
+   "source": "docs/evidence/live-tests.md T7",
+   "chain": "base",
+   "type": "base_receipt",
+   "claim": "T7: the same-nonce replacement (nonce 6) was accepted and mined: a self-transfer from the probe address",
+   "tx": "0x7c4dd8f82688e5a9a0f803b1921627296a3d23ecad88dcd1c6ba7e2e9cc58b0a",
+   "expect": {
+    "status": 1,
+    "from": "@probe_vault",
+    "to": "@probe_vault",
+    "nonce": 6
+   }
+  },
+  {
+   "id": "V01",
+   "source": "README, Evidence on testnet (v3 upgrade)",
+   "chain": "near",
+   "type": "near_tx",
+   "claim": "The v3 upgrade (earned trust) is applied to the main vault after the parked window and migrates its state",
+   "tx": "88RekZP3PgtVW7GTYkYjMGcqXo5m3yzFqtnS18uQwksc",
+   "signer": "bridle-hq.testnet",
+   "expect": {
+    "outcome": "success",
+    "receiver": "vault.bridle-hq.testnet",
+    "logs_contain": [
+     "\"event\":\"upgrading\"",
+     "\"event\":\"migrated\""
+    ]
+   }
+  },
+  {
+   "id": "V02",
+   "source": "README, Evidence on testnet (v3 upgrade)",
+   "chain": "near",
+   "type": "near_tx",
+   "claim": "The v3 upgrade is applied to the arena vault after the parked window and migrates its state",
+   "tx": "6LYC3ZupmiagMam9Axv5bXjCQMRRi9QnAbLch7di73kC",
+   "signer": "bridle-hq.testnet",
+   "expect": {
+    "outcome": "success",
+    "receiver": "arena.bridle-hq.testnet",
+    "logs_contain": [
+     "\"event\":\"upgrading\"",
+     "\"event\":\"migrated\""
+    ]
+   }
+  },
+  {
+   "id": "V03",
+   "source": "docs/evidence/ai-redteam.md (F-RLP fix)",
+   "chain": "near",
+   "type": "near_tx",
+   "claim": "The v3.1 upgrade with the canonical signature encoding fix is applied to the main vault",
+   "tx": "4znfpZikxqWk6JPSRkgBHegSifTfnCfQYA7mCPfjZp9X",
+   "signer": "bridle-hq.testnet",
+   "expect": {
+    "outcome": "success",
+    "receiver": "vault.bridle-hq.testnet",
+    "logs_contain": [
+     "\"event\":\"upgrading\"",
+     "\"event\":\"migrated\""
+    ]
+   }
+  },
+  {
+   "id": "V04",
+   "source": "docs/evidence/ai-redteam.md (F-RLP fix)",
+   "chain": "near",
+   "type": "near_tx",
+   "claim": "The v3.1 upgrade with the canonical signature encoding fix is applied to the arena vault",
+   "tx": "6w4abPZEGY7XnQWHLFDtXmEcHmnh9gNinwq4eYYwzCxS",
+   "signer": "bridle-hq.testnet",
+   "expect": {
+    "outcome": "success",
+    "receiver": "arena.bridle-hq.testnet",
+    "logs_contain": [
+     "\"event\":\"upgrading\"",
+     "\"event\":\"migrated\""
+    ]
+   }
+  },
+  {
+   "id": "V05",
+   "source": "README, Evidence on testnet (earned trust switched on)",
+   "chain": "near",
+   "type": "near_tx",
+   "claim": "A DAO vote lowers the agent's trust floor to 10 USDC; it is a tightening, so it applies at once (policy_tightened, not parked)",
+   "tx": "FfUCgHpqHAufMDHEeu3JGwCnbwsdm6guhpP6mEMXXc16",
+   "signer": "bridle-hq.testnet",
+   "expect": {
+    "outcome": "success",
+    "receiver": "bridle-hq.sputnik-v2.testnet",
+    "logs_contain": [
+     "\"event\":\"policy_tightened\""
+    ]
+   }
+  },
+  {
+   "id": "V06",
+   "source": "docs/PROGRESS.md (indirect prompt injection)",
+   "chain": "near",
+   "type": "near_tx",
+   "claim": "An agent that read a poisoned market note asked for an outflow; the arena refused it with not_allowed",
+   "tx": "HagrKqq4YwCgBkcnDaptQ81qiHiKtB7cKPYUpVLQzt8q",
+   "signer": "arena.bridle-hq.testnet",
+   "expect": {
+    "outcome": "success",
+    "receiver": "arena.bridle-hq.testnet",
+    "logs_contain": [
+     "\"event\":\"rejected\"",
+     "\"reason\":\"not_allowed\""
+    ]
+   }
+  },
+  {
+   "id": "V07",
+   "source": "README, Earned trust",
+   "chain": "near",
+   "type": "vault_view",
+   "claim": "The main vault runs state version 3 with earned trust on: floor 10 USDC, ceiling 50 USDC, and at least 3 agent operations proved by the MPC",
+   "account": "vault.bridle-hq.testnet",
+   "method": "get_state",
+   "assert": [
+    {
+     "path": "state_version",
+     "gte": "3"
+    },
+    {
+     "path": "trust.floor",
+     "equals": "10000000"
+    },
+    {
+     "path": "trust.ceiling",
+     "equals": "50000000"
+    },
+    {
+     "path": "trust.proved_total",
+     "gte": "3"
+    }
+   ]
+  },
+  {
+   "id": "V08",
+   "source": "README, Earned trust",
+   "chain": "near",
+   "type": "vault_view",
+   "claim": "The arena vault runs state version 3 with earned trust on (floor 10 USDC)",
+   "account": "arena.bridle-hq.testnet",
+   "method": "get_state",
+   "assert": [
+    {
+     "path": "state_version",
+     "gte": "3"
+    },
+    {
+     "path": "trust.floor",
+     "equals": "10000000"
+    }
+   ]
+  },
+  {
+   "id": "V09",
+   "source": "docs/evidence/ai-redteam.md (F-RLP)",
+   "chain": "base",
+   "type": "base_never_mined",
+   "claim": "The non-canonical transaction the red team hit (s with a leading zero byte) was never mined",
+   "tx": "0x72dd67dd95ac69eb89d7559eb9471bf2bd740ba13e4d39b4c499bc1755d58fa5"
+  }
+ ]
+}

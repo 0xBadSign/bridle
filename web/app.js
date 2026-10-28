@@ -4,6 +4,7 @@ import { createKeeper } from "./keeper-web.js";
 import { baseRpc, fetchVault, VAULTS } from "./lib/chain.js";
 import { ago, esc } from "./lib/fmt.js";
 import * as pages from "./pages.js";
+import { installVerify } from "./verify-web.js";
 
 const $ = (id) => document.getElementById(id);
 const PAGES = ["overview", "ops", "parked", "rejections", "arena", "how"];
@@ -110,6 +111,7 @@ $("vault-select").addEventListener("change", (e) => {
 document.addEventListener("bridle-refresh", () => { poll("arena"); if (vaultKey !== "arena") poll(vaultKey); });
 window.addEventListener("hashchange", route);
 
+installVerify();
 route();
 poll();
 setInterval(() => !document.hidden && poll(), POLL_MS);

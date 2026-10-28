@@ -108,7 +108,7 @@ export class KeeperCore {
         if (li === null) return `main ${s.hash.slice(0, 10)} has no matching log`;
         const r = await this.call("settle", { op: op.id, slot: si, tx: s.hash, hints: this.hints(rc, li) });
         const ev = r.events.map((e) => e.event).join(",");
-        return `settle ${which} ${s.hash.slice(0, 10)} -> ${JSON.stringify(r.value)} [${ev}]`;
+        return `settle ${which} ${s.hash.slice(0, 10)} -> ${JSON.stringify(r.value)} [${ev}]${r.hash ? ` near ${r.hash}` : ""}`;
       }
     }
     return "broadcast; waiting for inclusion";

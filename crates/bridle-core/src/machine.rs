@@ -40,7 +40,7 @@ pub const MAX_VERIFIES_IN_FLIGHT: usize = 4;
 /// window (see `credit_floor_block`) past a real deposit that was not yet credited.
 pub const MIN_CREDIT: u128 = 1_000_000;
 /// Version of the persisted `Vault` layout (see `legacy` for older layouts).
-pub const STATE_VERSION: u32 = 2;
+pub const STATE_VERSION: u32 = 3;
 /// Aave's aToken balance can read a few base units below the supplied amount right after a supply
 /// (scaled-balance rounding; seen live: 32 USDC supplied, 31.999998 aUSDC). An exact-principal
 /// withdraw would then revert, so an unwind leaves this much dust in Aave.
@@ -332,6 +332,99 @@ pub enum Reject {
     StaleParked,
 }
 
+/// Why the agent's earned trust went back to the floor.
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, BorshSerialize, BorshDeserialize, Serialize, Deserialize,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum TrustReset {
+    /// The agent key asked for something the mandate forbids (an outflow, or above its cap).
+    Refusal,
+    GuardianPause,
+    GuardianVeto,
+    /// One of the agent's operations was cancelled, proved reverted, or resolved by the DAO.
+    OpIntervention,
+    /// The DAO rotated the agent key; a new key starts at the floor.
+    KeyRotated,
+    /// The DAO reset it directly.
+    Dao,
+}
+
+/// The agent's earned trust. Only agent operations whose every step was proved landed by an MPC
+/// attestation count; a DAO `resolve` never does. At most one step per `trust_epochs_per_step`.
+#[derive(
+    Clone, Debug, Default, PartialEq, Eq, BorshSerialize, BorshDeserialize, Serialize, Deserialize,
+)]
+pub struct Trust {
+    pub level: u32,
+    /// Proved landings counted toward the next step (at most `trust_landings_per_step`).
+    pub landings: u32,
+    /// Epoch index of the last step or reset. The next step needs `trust_epochs_per_step` more.
+    pub last_change_epoch: u64,
+    /// Proved agent operations ever counted, and resets ever applied (for the dashboard).
+    pub proved_total: u64,
+    pub resets: u64,
+    pub last_reset: Option<(u64, TrustReset)>,
+}
+
+/// What `get_state` shows about trust.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TrustView {
+    pub level: u32,
+    pub landings: u32,
+    pub landings_per_step: u32,
+    /// The agent's per-action cap now, and its floor and ceiling.
+    #[serde(with = "crate::types::u128_str")]
+    pub cap: u128,
+    #[serde(with = "crate::types::u128_str")]
+    pub floor: u128,
+    #[serde(with = "crate::types::u128_str")]
+    pub ceiling: u128,
+    /// First epoch index in which the next step may happen.
+    pub next_step_epoch: u64,
+    pub at_ceiling: bool,
+    pub proved_total: u64,
+    pub resets: u64,
+    pub last_reset: Option<(u64, TrustReset)>,
+}
+
+/// Result of [`Vault::preview_policy`].
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PolicyPreview {
+    /// Set if the policy would be refused outright.
+    pub invalid: Option<String>,
+    pub lane: Lane,
+    pub wait_ms: u64,
+    /// Guardian keys that could veto it while it waits (empty for FAST).
+    pub vetoable_by: Vec<String>,
+    pub exposure_before: Exposure,
+    pub exposure_after: Exposure,
+    /// The agent's per-action cap at its current trust level, before and after.
+    #[serde(with = "crate::types::u128_str")]
+    pub agent_cap_before: u128,
+    #[serde(with = "crate::types::u128_str")]
+    pub agent_cap_after: u128,
+    pub changes: Vec<policy::FieldChange>,
+}
+
+/// Result of [`Vault::preview_outflow`].
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OutflowPreview {
+    #[serde(with = "crate::types::u128_str")]
+    pub amount: u128,
+    /// FAST allowance left in this epoch.
+    #[serde(with = "crate::types::u128_str")]
+    pub fast_left: u128,
+    pub lane: Lane,
+    pub wait_ms: u64,
+    pub vetoable_by: Vec<String>,
+    #[serde(with = "crate::types::u128_str")]
+    pub idle: u128,
+    pub enough_idle: bool,
+    pub paused: bool,
+    pub treasury: EvmAddr,
+}
+
 /// Something the contract must do.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "effect", rename_all = "snake_case")]
@@ -408,6 +501,8 @@ pub struct Vault {
     /// Highest block number among evicted consumed proofs. Deposits at or below it are refused, so
     /// evicting old entries can never make an old deposit creditable again (review finding 2a).
     pub credit_floor_block: u64,
+    /// The agent's earned trust (see [`Trust`]).
+    pub trust: Trust,
     pub version: u32,
 }
 
@@ -440,12 +535,18 @@ impl Vault {
             rejection_count: 0,
             upgrade_ready: None,
             credit_floor_block: 0,
+            trust: Trust::default(),
             version: STATE_VERSION,
         })
     }
 
-    /// Record a refusal in the bounded public ledger.
+    /// Record a refusal in the bounded public ledger. A refusal of the agent key for something the
+    /// mandate forbids (an action it can never take, or more than its cap) resets its trust.
+    /// Refusals of anyone else never touch trust, so outsiders cannot grief the agent's level.
     pub fn record_rejection(&mut self, now: u64, caller: Caller, method: &str, reason: Reject) {
+        if caller == Caller::Agent && matches!(reason, Reject::NotAllowed | Reject::AboveAgentMax) {
+            self.reset_trust(now, TrustReset::Refusal);
+        }
         self.rejection_count += 1;
         if self.rejections.len() >= MAX_REJECTIONS_KEPT {
             self.rejections.remove(0);
@@ -501,6 +602,126 @@ impl Vault {
         exposure(&self.policy)
     }
 
+    /// The agent's per-action cap now (earned trust, never above `agent_max_per_action`).
+    pub fn agent_cap(&self) -> u128 {
+        policy::trust_cap(&self.policy, self.trust.level)
+    }
+
+    pub fn trust_view(&self) -> TrustView {
+        let p = &self.policy;
+        let cap = self.agent_cap();
+        TrustView {
+            level: self.trust.level,
+            landings: self.trust.landings,
+            landings_per_step: p.trust_landings_per_step,
+            cap,
+            floor: policy::trust_cap(p, 0),
+            ceiling: p.agent_max_per_action,
+            next_step_epoch: self.trust.last_change_epoch + p.trust_epochs_per_step as u64,
+            at_ceiling: cap >= p.agent_max_per_action,
+            proved_total: self.trust.proved_total,
+            resets: self.trust.resets,
+            last_reset: self.trust.last_reset,
+        }
+    }
+
+    /// Pre-vote preview of a policy change: the lane and wait it would get, who could veto it, how
+    /// exposure and the agent's cap would move, and every field it touches. Pure; changes nothing.
+    pub fn preview_policy(&self, new: &Policy) -> PolicyPreview {
+        let invalid = policy::validate(new, &self.config.floors)
+            .err()
+            .map(|e| format!("{e:?}"));
+        let lane = policy::classify(&self.policy, new);
+        PolicyPreview {
+            invalid,
+            lane,
+            wait_ms: self.window(lane),
+            vetoable_by: if lane == Lane::Fast {
+                vec![]
+            } else {
+                self.guardians.clone()
+            },
+            exposure_before: self.exposure(),
+            exposure_after: exposure(new),
+            agent_cap_before: self.agent_cap(),
+            agent_cap_after: policy::trust_cap(new, self.trust.level),
+            changes: policy::diff(&self.policy, new),
+        }
+    }
+
+    /// Pre-vote preview of a DAO outflow to the treasury: FAST within this epoch's fast allowance,
+    /// otherwise parked in the long lane.
+    pub fn preview_outflow(&self, now: u64, amount: u128) -> OutflowPreview {
+        let epoch = now / self.policy.epoch_ms.max(1);
+        let used = if epoch == self.epoch.index {
+            self.epoch.fast_outflow_used
+        } else {
+            0
+        };
+        let fast_left = self.policy.fast_outflow_per_epoch.saturating_sub(used);
+        let lane = if amount <= fast_left {
+            Lane::Fast
+        } else {
+            Lane::Long
+        };
+        OutflowPreview {
+            amount,
+            fast_left,
+            lane,
+            wait_ms: self.window(lane),
+            vetoable_by: if lane == Lane::Fast {
+                vec![]
+            } else {
+                self.guardians.clone()
+            },
+            idle: self.ledger.idle,
+            enough_idle: amount <= self.ledger.idle,
+            paused: self.paused(now),
+            treasury: self.policy.treasury,
+        }
+    }
+
+    fn window(&self, lane: Lane) -> u64 {
+        match lane {
+            Lane::Fast => 0,
+            Lane::Short => self.policy.short_window_ms,
+            Lane::Long => self.policy.long_window_ms,
+        }
+    }
+
+    /// Back to the floor. Also restarts the per-step epoch wait.
+    fn reset_trust(&mut self, now: u64, why: TrustReset) {
+        self.roll_epoch(now);
+        self.trust.level = 0;
+        self.trust.landings = 0;
+        self.trust.last_change_epoch = self.epoch.index;
+        self.trust.resets += 1;
+        self.trust.last_reset = Some((now, why));
+    }
+
+    /// An agent operation finished with every step proved landed by an MPC attestation.
+    /// Returns true if the level went up.
+    fn count_proved_landing(&mut self, now: u64) -> bool {
+        self.roll_epoch(now);
+        let p = &self.policy;
+        let t = &mut self.trust;
+        t.proved_total += 1;
+        t.landings = (t.landings + 1).min(p.trust_landings_per_step);
+        let cap = policy::trust_cap(p, t.level);
+        let waited = self.epoch.index >= t.last_change_epoch + p.trust_epochs_per_step as u64;
+        if t.landings >= p.trust_landings_per_step
+            && waited
+            && cap < p.agent_max_per_action
+            && p.trust_step_per_action > 0
+        {
+            t.level += 1;
+            t.landings = 0;
+            t.last_change_epoch = self.epoch.index;
+            return true;
+        }
+        false
+    }
+
     /// The unsigned transaction behind a slot's draft, for assembling signatures in the contract.
     pub fn tx_for(&self, op: u64, slot: u32, which: Which) -> Option<EVMTransaction> {
         let d = self.draft(op, slot, which)?;
@@ -553,7 +774,8 @@ fn new_slot(call: Call) -> Slot {
 // Starting operations
 
 impl Vault {
-    /// The agent's only entry point. Only `Supply` and `Withdraw`, within caps, quota and interval.
+    /// The agent's only entry point. Only `Supply` and `Withdraw`, within its earned per-action cap,
+    /// the quota and the interval.
     pub fn agent_act<H: Hasher>(&mut self, h: &H, now: u64, action: Action) -> Out {
         self.roll_epoch(now);
         if self.paused(now) {
@@ -563,7 +785,7 @@ impl Vault {
             Action::Supply { amount } | Action::Withdraw { amount } => amount,
             _ => return Err(Reject::NotAllowed),
         };
-        if amount > self.policy.agent_max_per_action {
+        if amount > self.agent_cap() {
             return Err(Reject::AboveAgentMax);
         }
         if self.epoch.agent_actions >= self.policy.agent_quota_per_epoch {
@@ -606,9 +828,12 @@ impl Vault {
     }
 
     /// Guardian exit: pull principal back to the vault's own address. Nothing leaves `D`.
+    /// An emergency exit also sends the agent's trust back to the floor.
     pub fn guardian_unwind<H: Hasher>(&mut self, h: &H, now: u64, g: &str) -> Out {
         self.require_guardian(g)?;
-        self.start(h, now, Action::Unwind, Origin::Guardian)
+        let fx = self.start(h, now, Action::Unwind, Origin::Guardian)?;
+        self.reset_trust(now, TrustReset::OpIntervention);
+        Ok(fx)
     }
 
     /// Reserve funds, create the operation and request the first signature.
@@ -1013,6 +1238,9 @@ impl Vault {
                 // own signatures without a provable success: treat as reverted.
                 s.status = SlotStatus::Reverted { by_dao: false };
                 fx.extend(self.after_slot(h, now, op, slot, false)?);
+                if self.op(op).is_some_and(|o| o.origin == Origin::Agent) {
+                    self.reset_trust(now, TrustReset::OpIntervention);
+                }
             }
         }
         Ok(fx)
@@ -1021,7 +1249,6 @@ impl Vault {
     /// Ledger and progress after a slot closed. `success` means the main transaction landed.
     fn after_slot<H: Hasher>(&mut self, h: &H, now: u64, op: u64, slot: u32, success: bool) -> Out {
         let _ = h;
-        let _ = now;
         let o = self.op(op).ok_or(Reject::NoSuchOp)?.clone();
         let call = o.slots[slot as usize].call;
         let a = o.amount;
@@ -1093,11 +1320,35 @@ impl Vault {
                 OpStatus::Done
             };
             o.status = status;
+            // Earned trust counts only the agent's own operations whose every step was proved by an
+            // MPC attestation of the vault's own transaction (never a DAO `resolve`).
+            let proved = status == OpStatus::Done
+                && o.origin == Origin::Agent
+                && o.slots.iter().all(|s| {
+                    matches!(
+                        s.status,
+                        SlotStatus::Landed {
+                            which: Which::Main,
+                            ..
+                        }
+                    )
+                });
             self.active = None;
-            return Ok(vec![event(
+            let mut fx = vec![event(
                 "op_done",
                 format!(r#"{{"op":{op},"status":"{status:?}"}}"#),
-            )]);
+            )];
+            if proved && self.count_proved_landing(now) {
+                fx.push(event(
+                    "trust_up",
+                    format!(
+                        r#"{{"level":{},"cap":"{}"}}"#,
+                        self.trust.level,
+                        self.agent_cap()
+                    ),
+                ));
+            }
+            return Ok(fx);
         }
         o.cursor = slot + 1;
         Ok(vec![event(
@@ -1149,6 +1400,7 @@ impl Vault {
         let req = self.next_req + 1;
         let id = self.active.ok_or(Reject::NoSuchOp)?;
         let o = self.op_mut(id).ok_or(Reject::NoSuchOp)?;
+        let agent_op = o.origin == Origin::Agent;
         let cursor = o.cursor;
         let s = &mut o.slots[cursor as usize];
         if s.status != SlotStatus::Open {
@@ -1191,6 +1443,9 @@ impl Vault {
             .unwrap_or(Hash32([0; 32]));
         s.signing = Some((req, Which::Cancel));
         self.next_req = req;
+        if agent_op {
+            self.reset_trust(now, TrustReset::OpIntervention);
+        }
         Ok(vec![Effect::Sign {
             op: id,
             slot: cursor,
@@ -1281,11 +1536,16 @@ impl Vault {
         } else {
             SlotStatus::Reverted { by_dao: true }
         };
+        let agent_op = o.origin == Origin::Agent;
         let mut fx = vec![event(
             "dao_resolved",
             format!(r#"{{"op":{id},"slot":{cursor},"landed":{landed}}}"#),
         )];
         fx.extend(self.after_slot(h, now, id, cursor, landed)?);
+        // A trusted resolution is not a proof: the agent's trust goes back to the floor.
+        if agent_op {
+            self.reset_trust(now, TrustReset::OpIntervention);
+        }
         Ok(fx)
     }
 }
@@ -1502,13 +1762,21 @@ impl Vault {
         ])
     }
 
-    /// DAO: replace the agent key (same shape: `agent_act` only, same allowance).
-    pub fn set_agent_key(&mut self, new: String) -> Out {
+    /// DAO: replace the agent key (same shape: `agent_act` only, same allowance). A new key starts
+    /// at the trust floor.
+    pub fn set_agent_key(&mut self, now: u64, new: String) -> Out {
         let old = self.agent_key.replace(new.clone());
+        self.reset_trust(now, TrustReset::KeyRotated);
         Ok(vec![
             Effect::SetAgentKey { old, new },
             event("agent_key_set", "{}".into()),
         ])
+    }
+
+    /// DAO: send the agent's trust back to the floor (FAST: it only restricts).
+    pub fn dao_reset_trust(&mut self, now: u64) -> Out {
+        self.reset_trust(now, TrustReset::Dao);
+        Ok(vec![event("trust_reset", r#"{"by":"dao"}"#.into())])
     }
 
     /// DAO: park an upgrade to the given code hash (long window, unbounded exposure).
@@ -1628,6 +1896,8 @@ impl Vault {
             Some(e) => e.1 += 1,
             None => self.epoch.vetoes.push((g.to_string(), 1)),
         }
+        // A veto means a guardian saw something wrong; the agent starts over at the floor too.
+        self.reset_trust(now, TrustReset::GuardianVeto);
         Ok(vec![event(
             "vetoed",
             format!(r#"{{"id":{id},"guardian":"{g}"}}"#),
@@ -1646,6 +1916,7 @@ impl Vault {
         }
         self.paused_until_ms = now + duration_ms;
         self.pause_cooldown_until_ms = self.paused_until_ms + duration_ms;
+        self.reset_trust(now, TrustReset::GuardianPause);
         Ok(vec![event(
             "paused",
             format!(

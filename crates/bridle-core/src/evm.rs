@@ -201,6 +201,12 @@ impl MpcSignature {
     }
 }
 
+/// Big-endian bytes without leading zeros (the canonical RLP integer form).
+fn minimal(b: &[u8]) -> Vec<u8> {
+    let first = b.iter().position(|&x| x != 0).unwrap_or(b.len());
+    b[first..].to_vec()
+}
+
 /// The signed raw transaction and its hash, if the signature is well formed.
 pub fn assemble<H: Hasher>(
     h: &H,
@@ -211,10 +217,13 @@ pub fn assemble<H: Hasher>(
     if sig.recovery_id > 1 {
         return None;
     }
+    // RLP integers must be minimal: `omni-transaction` appends `r` and `s` as byte strings, so a
+    // leading zero byte (about 1 signature in 128) would make Base nodes reject the transaction as
+    // non-canonical. Strip leading zeros so the encoding is the canonical integer one.
     let s = Signature {
         v: sig.recovery_id as u64,
-        r: rs[..32].to_vec(),
-        s: rs[32..].to_vec(),
+        r: minimal(&rs[..32]),
+        s: minimal(&rs[32..]),
     };
     let raw = tx.build_with_signature(&s);
     let hash = h.keccak256(&raw);

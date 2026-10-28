@@ -62,7 +62,7 @@ export async function fetchVault(id) {
     view(id, "get_rejections"),
     accessKeys(id),
   ]);
-  return { state, ops, parked, rej, keys, fetchedAt: Date.now() };
+  return { id, state, ops, parked, rej, keys, fetchedAt: Date.now() };
 }
 
 // ---------------------------------------------------------------------------------------------

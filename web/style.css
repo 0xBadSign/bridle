@@ -77,3 +77,10 @@ button:disabled { opacity: .55; cursor: wait; }
 .foot { display: flex; flex-direction: column; gap: 4px; padding-top: 28px; padding-bottom: 40px; color: var(--muted); font-size: .82rem; }
 #keeper-note { color: var(--accent); font-weight: 600; }
 .err { color: var(--bad); }
+
+.trustbar { display: inline-block; width: 120px; height: 8px; border-radius: 4px; background: var(--line); vertical-align: middle; overflow: hidden; }
+.trustbar > span { display: block; height: 100%; background: var(--ok); }
+
+#verify-dialog { max-width: 720px; width: calc(100% - 32px); border: 1px solid var(--line); border-radius: 10px; background: var(--card); color: var(--ink); padding: 16px; }
+#verify-dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
+button.small { padding: 2px 8px; font-size: 12px; }

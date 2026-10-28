@@ -1,6 +1,7 @@
 # Progress
 
 ## Where we are
+- 2026-10-29: phase 2 started (PLAN.md section 4, milestones M7 to M12).
 - M0 to M6 are built. The core, the vault, the keeper, the agent (market mode + gullible injection mode + optional LLM), the arena vault, the dashboard (`web/`) and `make demo` (offline, 75/75 PASS) are all done. `scripts/check.sh` passes everything.
 - Every path ran live on testnet. Evidence is below and in `.private/live-suite.out`.
 - Remaining items need the owner: O-1, O-2, O-3. Hosting the dashboard on GitHub Pages also needs the public repo (`node scripts/build-pages.mjs` builds `_site/`).
@@ -29,6 +30,12 @@
 - D-006: the vault uses low-level `env::promise_*` calls instead of `near_sdk::Promise`. The high-level type links the full-access-key and delete-account host functions into the wasm. `scripts/wasm-imports.mjs` proves both are absent.
 - D-007: the vault is a sub-account created by its parent in one batch (CreateAccount, Transfer, DeployContract, `new`) with no AddKey. It never had a full-access key, so there is no DeleteKey step to trust.
 - D-008: the NEAR RPC defaults to `https://test.rpc.fastnear.com`. `rpc.testnet.near.org` is deprecated and rate-limits with 429.
+- D-010 (2026-10-29): phase 2 plan (PLAN.md section 4) from the expansion debate (near-research 20, 21, 23). Evidence and legibility come first; earned trust and `preview` are the only new core features, with hard dates.
+- D-011: no second chain. Aave's Arbitrum Sepolia USDC can only be minted by an EOA (`owner()` = `0xab7d…4798`, no code). The MPC does not observe Ethereum Sepolia.
+- D-012: two-stage freeze: contract and core 2026-11-05, UI, scripts and docs 2026-11-08.
+- D-013: the AI red-team campaign runs before the core freeze and never during judging. Each accepted in-mandate action locks the arena for minutes.
+- D-015: the cron keeper runs as a dedicated account `cron.bridle-hq.testnet`, with one function-call key per vault, because a function-call key has a single receiver. `keeper.bridle-hq.testnet` has no full-access key, and its published key reaches only the arena. The full-access key stays in WSL; only the two function-call keys go into GitHub secrets.
+- D-014: `v1.signer` (mainnet) and `v1.signer-prod.testnet` have the same code hash `DAE5ng4ZFR2ctMx9SizQBqmGkVbKUutgZ4ZECD4R8Sm9` (checked 2026-10-29). The README's "path to mainnet" paragraph rests on this. Nothing is deployed to mainnet.
 
 ## Session log
 - 2026-10-28: repo created; plan written from near-research 11-19.
@@ -75,3 +82,63 @@
   - v2 with v1 to v2 state migration: main `GVPJyDt4Tg8ZAfFcahvSaNFVLYHe84m5NaWRV4GEwXss`, arena `H5CdENCopiRZSM3Zop8oSCfGaA5Q4T8Pjou93Eqf7iS2`. Both report `state_version` 2 and their ledgers are intact.
   - Post-migration smoke: arena injection refused (`AH36ycxf...`). The agent's market-mode supply of 31.9999 USDC was attested in both steps (`D9aTFVoX47CbYSB29bN4z7agRtASLvfrVsHn7Aqo4EHE`).
 - 2026-10-28: `make demo` 75/75 PASS on the v2 code; `scripts/check.sh` all green.
+- 2026-10-29: phase 2 started. The debate with Fable is in near-research 20, 21 and 23; the thesis data spike is in 22.
+- 2026-10-29: v3: earned trust and pre-vote previews (M10). Core:
+  - The policy gains `trust_floor_per_action`, `trust_step_per_action`, `trust_landings_per_step` and `trust_epochs_per_step`. Raising any of them is parked (short lane); lowering them is FAST.
+  - The agent's cap is min(ceiling, floor + level x step).
+  - The level rises by at most one step per epoch, and only when an agent operation finishes with every slot `Landed { Main }` by MPC attestation.
+  - The level resets to the floor on:
+    - an agent-key refusal for `not_allowed` or `above_agent_max`;
+    - a guardian pause, veto or unwind;
+    - a cancel, a probe-proved revert, or a `dao_resolve` of an agent operation;
+    - an agent key rotation;
+    - `dao_reset_trust`.
+  - New views: `preview_policy`, `preview_outflow`, and `trust` in `get_state`.
+  - Migration v2 to v3 lives in `legacy.rs`:
+    - Trust starts neutral (floor = ceiling), so no cap changes at the upgrade.
+    - Parked policies still waiting are expired.
+    - The key allowance is raised to at least 2 NEAR.
+    - v1 support was dropped; no v1 state exists.
+- 2026-10-29: tests:
+  - Core: 38 + 3 + 6 tests, all green.
+  - New: 9 scenario tests, and a second interleaving property test with trust invariants.
+  - New: a coverage test that proves the random runs reach trust levels 1 and 2. The first coverage run showed 0 of 300 runs earning any trust; an agent-cycle step fixed that.
+  - New: 3 migration tests that decode the real v2 `STATE` of both vaults. The fixtures are in `crates/bridle-core/tests/fixtures/`.
+  - `scripts/check.sh`: ALL CHECKS PASSED.
+- 2026-10-29: live v3 upgrade of both vaults. Each was parked by code hash, refused early and with other code, then applied:
+  - main: propose `AM4Ax7G8gSPqhS9Yd64jUpxfNkz8LSjEsHZwtKXYrCQQ`, upgrade `88RekZP3PgtVW7GTYkYjMGcqXo5m3yzFqtnS18uQwksc`;
+  - arena: propose `3BaB1fqFwSER4CDJsAcagt4fFeJK8NVfmsCLfmuZCcw3`, upgrade `6LYC3ZupmiagMam9Axv5bXjCQMRRi9QnAbLch7di73kC`.
+  - Both report `state_version` 3, unchanged ledgers, function-call keys only, and allowances refreshed to 2 NEAR.
+- 2026-10-29: earned trust switched on by a DAO FAST tightening of the floor from 50 to 10 USDC. `preview_policy` predicted lane `fast` beforehand.
+  - main: `FfUCgHpqHAufMDHEeu3JGwCnbwsdm6guhpP6mEMXXc16`
+  - arena: `H8XxEECByHLMr6RNej4ccq2UBLPMMf2wpieEWgp1BzXC`
+- 2026-10-29: cron keeper account `cron.bridle-hq.testnet` (D-015). The workflows `pages.yml` and `keeper.yml` are written but have not run on GitHub yet.
+- 2026-10-29: the AI red-team campaign against the arena started (M9). The brief is in `.private/redteam/BRIEF.md`. The attacker accounts `bridle-red-{a,b,c}-1029.testnet` were funded by the public testnet faucet.
+- 2026-10-29: live earned trust on the main vault. Three proved agent operations (withdraw 5, supply 5, withdraw 5) counted toward the first step:
+  - agent txs: `8sKvwLT8xVPs61U1UeFTwYTu7XTgfoyHB6fGft2jxV6F`, `cHpUzNDCoxMwE7uaTHt124fSJgh1e1Qgf4rN46a7YZj`, `59MvcHev42vjvDWt6DJ2jMkfQmaucNmD5VwGSwT2hp85`.
+  - `landings` went 1, 2, 3; `proved_total` is 3.
+  - The level waits for the next epoch (2026-10-29 00:00 UTC), as the per-epoch speed limit requires.
+- 2026-10-29: indirect prompt injection. A poisoned market note (`agent/notes/market-note-poisoned.txt`) was read by the agent (`--note`), the agent obeyed, and the arena refused with `not_allowed`: `HagrKqq4YwCgBkcnDaptQ81qiHiKtB7cKPYUpVLQzt8q`. The arena page has the same example.
+- 2026-10-29: independent attestation check:
+  - `scripts/verify-attestation.mjs`, with the shared core in `web/lib/attest.js`.
+  - The dashboard's Operations page has a "Verify the proof yourself" button on every landed step.
+  - Each check rebuilds the MPC payload from Base data and recovers the signature to the MPC's ForeignTx key, without trusting the vault.
+  - All live proofs checked pass 12/12, for example `AGFTK8R9dM25HEMFa81XfiqdkJFpb5JHP2MESgrRYzeh` and `4TTTS89jNYnkxF5weQVZjo9Q3Fdx4FRvnEKjzVdW6nc9`.
+- 2026-10-29: M7 screener bundle (subagent):
+  - `make verify` (`scripts/verify-claims.mjs`, `docs/evidence/claims.json`): 77/77 PASS. All 11 deliberately tampered expectations failed, as they should.
+  - `deploy/prebuilt/`: byte-identical to the deployed code, with `make demo-prebuilt` and `scripts/refresh-prebuilt.mjs`.
+  - `JUDGING.md` and `docs/VERIFY.md`.
+  - `Dockerfile` and `image.yml`, not run end to end locally (D-016).
+- 2026-10-29: M8 hosting and liveness (subagent):
+  - `pages.yml`, plus the `keeper.yml` cron with `scripts/cron-tick.mjs`. Liveness goes to an orphan `liveness` branch, summarised by `scripts/liveness-report.mjs`.
+  - The arena page explains the busy case.
+  - The local dry run was clean.
+- 2026-10-29: AI red team (M9): three AI attackers (Sonnet, Fable, Opus), 43 logged attempts, 31 of them NEAR transactions.
+  - Logs: `docs/evidence/redteam/`. Write-up: `docs/evidence/ai-redteam.md`.
+  - No theft, no false accounting, no fake trust, no lane bypass.
+  - One real bug, F-RLP (medium, liveness): `r` and `s` were encoded as fixed 32-byte strings, so about 1 in 128 signed transactions was non-canonical and Base refused it.
+    - Hit live: Base `0x72dd67dd...58fa5`. Recovered by cancel: `0x18763da1...71e4`.
+    - Fixed in `evm::assemble`, which now uses minimal `r` and `s`.
+    - Test: `signatures_with_leading_zero_bytes_are_encoded_canonically`.
+  - Also added: `extra_json_fields_cannot_add_a_destination`.
+- D-016: the Dockerfile uses `node:22-trixie`, because the NEAR sandbox binary needs glibc 2.39 or newer. It was not built locally: the owner removed Docker from WSL. CI builds and publishes it once the repo is public.

@@ -54,8 +54,26 @@ fn pol() -> Policy {
         max_pause_ms: 60 * MIN,
         max_vetoes_per_epoch: 2,
         treasury: treasury(),
+        // Neutral earned trust (floor = ceiling) so the scenario tests see the full cap.
+        trust_floor_per_action: 100_000_000,
+        trust_step_per_action: 10_000_000,
+        trust_landings_per_step: 3,
+        trust_epochs_per_step: 1,
     }
 }
+
+/// A policy with earned trust switched on: 10 USDC floor, +10 per step, ceiling 100.
+fn trust_pol() -> Policy {
+    Policy {
+        trust_floor_per_action: 10 * U,
+        trust_step_per_action: 10 * U,
+        trust_landings_per_step: 2,
+        trust_epochs_per_step: 1,
+        ..pol()
+    }
+}
+
+const DAY: u64 = 24 * 60 * MIN;
 
 fn floors() -> Floors {
     Floors {
@@ -81,12 +99,16 @@ struct World {
 
 impl World {
     fn new() -> Self {
+        Self::with(pol())
+    }
+
+    fn with(policy: Policy) -> Self {
         let mut v = Vault::new(
             Config {
                 chain: chain(),
                 floors: floors(),
             },
-            pol(),
+            policy,
             7,
         )
         .unwrap();
@@ -912,11 +934,23 @@ enum Step {
     Credit(u128),
     Execute(u64),
     LateSettle,
+    AgentRefused(bool),
+    OutsiderRefused,
+    /// An agent request driven to the end with good signatures and proofs (if it is accepted).
+    AgentCycle(u8, u128),
+    Veto(u64),
+    Rotate,
+    ResetTrust,
+    Unwind,
 }
 
 fn step() -> impl Strategy<Value = Step> {
     prop_oneof![
-        (0u8..4, 0u128..200_000_000).prop_map(|(k, a)| Step::Agent(k, a)),
+        (
+            0u8..4,
+            prop_oneof![0u128..200_000_000, 1_000_000u128..30_000_000]
+        )
+            .prop_map(|(k, a)| Step::Agent(k, a)),
         (0u8..4, 0u128..300_000_000).prop_map(|(k, a)| Step::Dao(k, a)),
         Just(Step::SignOk),
         Just(Step::SignOk),
@@ -929,11 +963,22 @@ fn step() -> impl Strategy<Value = Step> {
         Just(Step::Probe),
         any::<bool>().prop_map(Step::Resolve),
         (0u64..40).prop_map(|m| Step::Tick(m * MIN)),
+        Just(Step::Tick(DAY)),
+        Just(Step::Tick(DAY)),
         Just(Step::Pause),
         (0u128..1_000_000_000).prop_map(Step::Tighten),
         (MIN_CREDIT..300_000_000).prop_map(Step::Credit),
         (0u64..6).prop_map(Step::Execute),
         Just(Step::LateSettle),
+        any::<bool>().prop_map(Step::AgentRefused),
+        (0u8..2, 1_000_000u128..12_000_000).prop_map(|(k, a)| Step::AgentCycle(k, a)),
+        (0u8..2, 1_000_000u128..12_000_000).prop_map(|(k, a)| Step::AgentCycle(k, a)),
+        (0u8..2, 1_000_000u128..12_000_000).prop_map(|(k, a)| Step::AgentCycle(k, a)),
+        Just(Step::OutsiderRefused),
+        (0u64..6).prop_map(Step::Veto),
+        Just(Step::Rotate),
+        Just(Step::ResetTrust),
+        Just(Step::Unwind),
     ]
 }
 
@@ -946,87 +991,324 @@ fn action(k: u8, a: u128) -> Action {
     }
 }
 
-proptest! {
-    #![proptest_config(ProptestConfig::with_cases(400))]
-
-    /// Invariants 1, 4, 5, 9 and ledger conservation under any interleaving.
-    #[test]
-    fn invariants_hold_under_random_interleavings(steps in proptest::collection::vec(step(), 1..120)) {
-        let mut w = World::new();
-        let mut credited: u128 = 0;
-        let mut signed_by_slot: Vec<(u64, u32, Hash32)> = vec![];
-        for s in steps {
-            let now = w.now;
-            match s {
-                Step::Agent(k, a) => { let r = w.v.agent_act(&TH, now, action(k, a)); let _ = w.run(r); }
-                Step::Dao(k, a) => { let r = w.v.dao_act(&TH, now, action(k, a)); let _ = w.run(r); }
-                Step::SignOk => if !w.pending_sign.is_empty() {
+/// Invariants 1, 4, 5, 9, ledger conservation and the earned-trust rules under any interleaving.
+fn check_interleaving(policy: Policy, steps: Vec<Step>) -> Result<u32, TestCaseError> {
+    let mut w = World::with(policy);
+    let mut max_level = 0u32;
+    let mut credited: u128 = 0;
+    let mut signed_by_slot: Vec<(u64, u32, Hash32)> = vec![];
+    for s in steps {
+        let now = w.now;
+        let before = w.v.trust.clone();
+        let active_before = w.v.active;
+        let done_before: Vec<u64> =
+            w.v.ops
+                .iter()
+                .filter(|o| o.status == OpStatus::Done)
+                .map(|o| o.id)
+                .collect();
+        let mut reset_expected = false;
+        match s.clone() {
+            Step::Agent(k, a) => {
+                let r = w.v.agent_act(&TH, now, action(k, a));
+                let _ = w.run(r);
+            }
+            Step::Dao(k, a) => {
+                let r = w.v.dao_act(&TH, now, action(k, a));
+                let _ = w.run(r);
+            }
+            Step::SignOk => {
+                if !w.pending_sign.is_empty() {
                     let (op, slot, _, _, _) = w.pending_sign[0];
                     let h = w.sign_ok();
                     signed_by_slot.push((op, slot, h));
-                },
-                Step::SignTimeout => if !w.pending_sign.is_empty() { w.sign_timeout(); },
-                Step::SettleOk | Step::SettleFail => {
-                    if let Some(id) = w.v.active {
-                        let cursor = w.v.op(id).unwrap().cursor;
-                        if let Some(&(_, _, h)) = signed_by_slot.iter().rev().find(|(o, sl, _)| *o == id && *sl == cursor) {
-                            let _ = w.settle(h, matches!(s, Step::SettleOk));
-                        }
+                }
+            }
+            Step::SignTimeout => {
+                if !w.pending_sign.is_empty() {
+                    w.sign_timeout();
+                }
+            }
+            Step::SettleOk | Step::SettleFail => {
+                if let Some(id) = w.v.active {
+                    let cursor = w.v.op(id).unwrap().cursor;
+                    if let Some(&(_, _, h)) = signed_by_slot
+                        .iter()
+                        .rev()
+                        .find(|(o, sl, _)| *o == id && *sl == cursor)
+                    {
+                        let _ = w.settle(h, matches!(s, Step::SettleOk));
                     }
                 }
-                Step::Advance => { let r = w.v.advance(&TH, now); let _ = w.run(r); }
-                Step::Cancel(k) => {
-                    let c = match k { 0 => Caller::Dao, 1 => Caller::Guardian(G1.into()), _ => Caller::Public };
-                    let r = w.v.cancel(&TH, now, &c); let _ = w.run(r);
+            }
+            Step::Advance => {
+                let r = w.v.advance(&TH, now);
+                let _ = w.run(r);
+            }
+            Step::Cancel(k) => {
+                let c = match k {
+                    0 => Caller::Dao,
+                    1 => Caller::Guardian(G1.into()),
+                    _ => Caller::Public,
+                };
+                let agent_op = active_before
+                    .and_then(|id| w.v.op(id))
+                    .is_some_and(|o| o.origin == Origin::Agent);
+                let r = w.v.cancel(&TH, now, &c);
+                reset_expected = agent_op && r.is_ok();
+                let _ = w.run(r);
+            }
+            Step::Probe => {
+                let r = w.v.probe(&TH, now);
+                let _ = w.run(r);
+            }
+            Step::Resolve(l) => {
+                let agent_op = active_before
+                    .and_then(|id| w.v.op(id))
+                    .is_some_and(|o| o.origin == Origin::Agent);
+                let r = w.v.dao_resolve(&TH, now, l);
+                reset_expected = agent_op && r.is_ok();
+                let _ = w.run(r);
+            }
+            Step::Tick(d) => w.now += d,
+            Step::Pause => {
+                reset_expected = w.v.guardian_pause(now, G1, 10 * MIN).is_ok();
+            }
+            Step::Tighten(cap) => {
+                let mut p = w.v.policy.clone();
+                p.supply_cap = cap.min(p.supply_cap);
+                p.agent_max_per_action = p.agent_max_per_action.min(p.supply_cap);
+                let _ = w.v.guardian_tighten(G1, p);
+            }
+            Step::Credit(a) => {
+                w.credit(a);
+                credited += a;
+            }
+            Step::Execute(id) => {
+                let r = w.v.execute(&TH, now, id);
+                let _ = w.run(r);
+            }
+            Step::LateSettle => {
+                // Try to settle any earlier slot with any known hash (replay / late proofs).
+                if let Some(&(op, slot, h)) = signed_by_slot.first() {
+                    let r = w.v.settle(&TH, now, op, slot, h, World::hints(), "keeper");
+                    if w.run(r).is_ok() {
+                        let (o, sl, req) = w.pending_verify.pop().unwrap();
+                        let r = w.v.on_verified(&TH, now, o, sl, req, true);
+                        let _ = w.run(r);
+                    }
                 }
-                Step::Probe => { let r = w.v.probe(&TH, now); let _ = w.run(r); }
-                Step::Resolve(l) => { let r = w.v.dao_resolve(&TH, now, l); let _ = w.run(r); }
-                Step::Tick(d) => w.now += d,
-                Step::Pause => { let _ = w.v.guardian_pause(now, G1, 10 * MIN); }
-                Step::Tighten(cap) => { let mut p = w.v.policy.clone(); p.supply_cap = cap.min(p.supply_cap); p.agent_max_per_action = p.agent_max_per_action.min(p.supply_cap); let _ = w.v.guardian_tighten(G1, p); }
-                Step::Credit(a) => { w.credit(a); credited += a; }
-                Step::Execute(id) => { let r = w.v.execute(&TH, now, id); let _ = w.run(r); }
-                Step::LateSettle => {
-                    // Try to settle any earlier slot with any known hash (replay / late proofs).
-                    if let Some(&(op, slot, h)) = signed_by_slot.first() {
-                        let r = w.v.settle(&TH, now, op, slot, h, World::hints(), "keeper");
-                        if w.run(r).is_ok() {
-                            let (o, sl, req) = w.pending_verify.pop().unwrap();
-                            let r = w.v.on_verified(&TH, now, o, sl, req, true);
-                            let _ = w.run(r);
+            }
+            Step::AgentRefused(forbidden) => {
+                let reason = if forbidden {
+                    Reject::NotAllowed
+                } else {
+                    Reject::TooSoon
+                };
+                w.v.record_rejection(now, Caller::Agent, "agent_act", reason);
+                reset_expected = forbidden;
+            }
+            Step::AgentCycle(k, a) => {
+                // A well-behaved agent waits its interval between requests.
+                w.now += MIN;
+                let now = w.now;
+                if w.v.active.is_none() {
+                    // Callbacks of finished operations never arrive in this world.
+                    w.pending_sign.clear();
+                    w.pending_verify.clear();
+                    let r = w.v.agent_act(&TH, now, action(k, a));
+                    if w.run(r).is_ok() {
+                        for _ in 0..8 {
+                            if w.v.active.is_none() {
+                                break;
+                            }
+                            if w.pending_sign.is_empty() {
+                                let r = w.v.advance(&TH, w.now);
+                                if w.run(r).is_err() {
+                                    break;
+                                }
+                            }
+                            if w.pending_sign.is_empty() {
+                                break;
+                            }
+                            let (op, slot, _, _, _) = w.pending_sign[0];
+                            let h = w.sign_ok();
+                            signed_by_slot.push((op, slot, h));
+                            if w.settle(h, true).is_err() {
+                                break;
+                            }
                         }
                     }
                 }
             }
-            let l = &w.v.ledger;
-            // Conservation: every credited unit is idle, in Aave, in flight, or proved sent.
-            // (Trusted DAO resolutions and late reconciles move units between buckets, never create them.)
-            prop_assert_eq!(l.idle + l.principal + l.supplying + l.sending + l.total_sent, credited,
-                "ledger not conserved: {:?}", l);
-            prop_assert!(l.withdrawing <= l.principal, "withdrawing within principal");
-            // At most one active operation, and its lock is the only one.
-            let active = w.v.ops.iter().filter(|o| o.status == OpStatus::Active).count();
-            prop_assert!(active <= 1);
-            prop_assert_eq!(active == 1, w.v.active.is_some());
-        }
-        // Nonces: each main payload sits at its own nonce; never two different main payloads per nonce.
-        let mut seen = std::collections::BTreeMap::new();
-        for (n, which, p) in &w.signed_log {
-            if *which == Which::Main {
-                prop_assert_eq!(*seen.entry(*n).or_insert(*p), *p, "two payloads at nonce {}", n);
+            Step::OutsiderRefused => {
+                w.v.record_rejection(now, Caller::Public, "agent_act", Reject::NotAllowed);
+                w.v.record_rejection(
+                    now,
+                    Caller::Guardian(G2.into()),
+                    "agent_act",
+                    Reject::AboveAgentMax,
+                );
+                prop_assert_eq!(
+                    &w.v.trust.level,
+                    &before.level,
+                    "outsider refusals never touch trust"
+                );
+            }
+            Step::Veto(id) => {
+                reset_expected = w.v.guardian_veto(now, G2, id).is_ok();
+            }
+            Step::Rotate => {
+                let r = w.v.set_agent_key(now, "ed25519:rotated".into());
+                reset_expected = r.is_ok();
+            }
+            Step::ResetTrust => {
+                let r = w.v.dao_reset_trust(now);
+                reset_expected = r.is_ok();
+            }
+            Step::Unwind => {
+                let r = w.v.guardian_unwind(&TH, now, G1);
+                reset_expected = r.is_ok();
+                let _ = w.run(r);
             }
         }
+        // Earned trust: the cap stays between the floor and the ceiling.
+        let t = &w.v.trust;
+        let cap = w.v.agent_cap();
+        prop_assert!(
+            cap <= w.v.policy.agent_max_per_action,
+            "cap above the ceiling"
+        );
+        prop_assert!(
+            cap >= policy::trust_cap(&w.v.policy, 0),
+            "cap below the floor"
+        );
+        if reset_expected {
+            prop_assert_eq!(t.level, 0, "{:?} must reset trust", s);
+        }
+        if t.level > before.level {
+            // At most one step at a time, only after the epoch wait, only from a proved landing
+            // of an agent operation whose every step was attested.
+            prop_assert_eq!(t.level, before.level + 1);
+            prop_assert!(
+                w.v.epoch.index
+                    >= before.last_change_epoch + w.v.policy.trust_epochs_per_step as u64
+            );
+            prop_assert!(t.proved_total > before.proved_total);
+        }
+        max_level = max_level.max(t.level);
+        if t.proved_total > before.proved_total {
+            // Exactly one operation finished in this step, and it is what counted.
+            prop_assert_eq!(t.proved_total, before.proved_total + 1);
+            let newly_done: Vec<&Op> =
+                w.v.ops
+                    .iter()
+                    .filter(|o| o.status == OpStatus::Done && !done_before.contains(&o.id))
+                    .collect();
+            prop_assert_eq!(newly_done.len(), 1);
+            let o = newly_done.first().copied();
+            prop_assert!(
+                o.is_some_and(|o| o.origin == Origin::Agent
+                    && o.status == OpStatus::Done
+                    && o.slots.iter().all(|sl| matches!(
+                        sl.status,
+                        SlotStatus::Landed {
+                            which: Which::Main,
+                            ..
+                        }
+                    ))),
+                "only fully attested agent operations count"
+            );
+        }
+        let l = &w.v.ledger;
+        // Conservation: every credited unit is idle, in Aave, in flight, or proved sent.
+        // (Trusted DAO resolutions and late reconciles move units between buckets, never create them.)
+        prop_assert_eq!(
+            l.idle + l.principal + l.supplying + l.sending + l.total_sent,
+            credited,
+            "ledger not conserved: {:?}",
+            l
+        );
+        prop_assert!(l.withdrawing <= l.principal, "withdrawing within principal");
+        // At most one active operation, and its lock is the only one.
+        let active =
+            w.v.ops
+                .iter()
+                .filter(|o| o.status == OpStatus::Active)
+                .count();
+        prop_assert!(active <= 1);
+        prop_assert_eq!(active == 1, w.v.active.is_some());
+    }
+    // Nonces: each main payload sits at its own nonce; never two different main payloads per nonce.
+    let mut seen = std::collections::BTreeMap::new();
+    for (n, which, p) in &w.signed_log {
+        if *which == Which::Main {
+            prop_assert_eq!(
+                *seen.entry(*n).or_insert(*p),
+                *p,
+                "two payloads at nonce {}",
+                n
+            );
+        }
+    }
+    Ok(max_level)
+}
+
+/// The earned-trust property test must actually reach higher levels, or its invariants are empty.
+#[test]
+fn random_interleavings_reach_several_trust_levels() {
+    use proptest::strategy::ValueTree;
+    use proptest::test_runner::TestRunner;
+    let mut runner = TestRunner::deterministic();
+    let mut levels = [0u32; 4];
+    for _ in 0..300 {
+        let steps = proptest::collection::vec(step(), 100..240)
+            .new_tree(&mut runner)
+            .unwrap()
+            .current();
+        let top = check_interleaving(trust_pol(), steps).unwrap();
+        levels[(top as usize).min(3)] += 1;
+    }
+    assert!(
+        levels[1] + levels[2] + levels[3] >= 15,
+        "too few runs earned trust: {levels:?}"
+    );
+    assert!(
+        levels[2] + levels[3] >= 2,
+        "too few runs reached level 2: {levels:?}"
+    );
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(400))]
+
+    #[test]
+    fn invariants_hold_under_random_interleavings(steps in proptest::collection::vec(step(), 1..120)) {
+        check_interleaving(pol(), steps)?;
+    }
+
+    #[test]
+    fn invariants_hold_with_earned_trust(steps in proptest::collection::vec(step(), 1..160)) {
+        check_interleaving(trust_pol(), steps)?;
     }
 
     /// Invariant 7: a FAST change never accepts an action the old policy refused.
     #[test]
     fn fast_changes_only_restrict(cap in 1u128..1_000_000_000, per in 1u128..1_000_000_000, q in 0u32..20,
-                                  iv in 0u64..100_000, out in 0u128..1_000_000_000, amt in 1u128..1_000_000_000) {
-        let a = pol();
+                                  iv in 0u64..100_000, out in 0u128..1_000_000_000, amt in 1u128..1_000_000_000,
+                                  tf in 0u128..200_000_000, ts in 0u128..50_000_000, tl in 1u32..6, te in 1u32..4,
+                                  level in 0u32..20) {
+        let a = trust_pol();
         let mut b = a.clone();
         b.supply_cap = cap; b.agent_max_per_action = per.min(cap); b.agent_quota_per_epoch = q;
         b.agent_min_interval_ms = iv; b.fast_outflow_per_epoch = out;
+        b.trust_floor_per_action = tf; b.trust_step_per_action = ts;
+        b.trust_landings_per_step = tl; b.trust_epochs_per_step = te;
         if policy::classify(&a, &b) == Lane::Fast {
+            // Earned trust can only get slower and smaller.
+            prop_assert!(policy::trust_cap(&b, level) <= policy::trust_cap(&a, level));
+            prop_assert!(b.trust_landings_per_step >= a.trust_landings_per_step);
+            prop_assert!(b.trust_epochs_per_step >= a.trust_epochs_per_step);
             prop_assert!(b.supply_cap <= a.supply_cap);
             prop_assert!(b.agent_max_per_action <= a.agent_max_per_action);
             prop_assert!(b.agent_quota_per_epoch <= a.agent_quota_per_epoch);
@@ -1041,4 +1323,311 @@ proptest! {
             if amt <= b.agent_max_per_action { prop_assert!(amt <= a.agent_max_per_action); }
         }
     }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Earned trust and pre-vote previews
+
+/// One proved agent supply at `amount`, a minute apart.
+fn proved_supply(w: &mut World, amount: u128) {
+    let r = w.v.agent_act(&TH, w.now, Action::Supply { amount });
+    w.run(r).unwrap();
+    w.finish();
+    w.now += MIN;
+}
+
+/// Wait one epoch, then earn one step with two proved supplies at the current cap.
+fn earn_one_step(w: &mut World) {
+    w.now += DAY;
+    let level = w.v.trust.level;
+    for _ in 0..2 {
+        let cap = w.v.agent_cap();
+        proved_supply(w, cap);
+    }
+    assert_eq!(w.v.trust.level, level + 1, "one step earned");
+}
+
+#[test]
+fn trust_grows_only_from_proved_agent_landings_one_step_per_epoch() {
+    let mut w = World::with(trust_pol());
+    w.credit(500 * U);
+    assert_eq!(w.v.agent_cap(), 10 * U, "a new agent starts at the floor");
+    assert_eq!(
+        w.v.agent_act(&TH, w.now, Action::Supply { amount: 11 * U }),
+        Err(Reject::AboveAgentMax)
+    );
+    proved_supply(&mut w, 10 * U);
+    assert_eq!(w.v.trust.level, 0, "one proved landing is not a step");
+    proved_supply(&mut w, 10 * U);
+    assert_eq!(w.v.trust.level, 1);
+    assert_eq!(w.v.agent_cap(), 20 * U);
+    // Two more proved landings in the same epoch are counted but cannot step: one step per epoch.
+    proved_supply(&mut w, 20 * U);
+    proved_supply(&mut w, 20 * U);
+    assert_eq!(w.v.trust.level, 1);
+    assert_eq!(w.v.trust.landings, 2);
+    // Next epoch: the next proved landing steps up.
+    w.now += DAY;
+    proved_supply(&mut w, 20 * U);
+    assert_eq!(w.v.trust.level, 2);
+    assert_eq!(w.v.agent_cap(), 30 * U);
+    assert_eq!(w.v.trust.proved_total, 5);
+    // DAO operations never count.
+    let r = w.v.dao_act(&TH, w.now, Action::Withdraw { amount: 5 * U });
+    w.run(r).unwrap();
+    w.finish();
+    assert_eq!(w.v.trust.proved_total, 5);
+}
+
+#[test]
+fn trust_never_exceeds_the_ceiling() {
+    let mut p = trust_pol();
+    p.agent_max_per_action = 25 * U;
+    let mut w = World::with(p);
+    w.credit(900 * U);
+    proved_supply(&mut w, 10 * U);
+    proved_supply(&mut w, 10 * U);
+    assert_eq!(w.v.agent_cap(), 20 * U);
+    earn_one_step(&mut w);
+    assert_eq!(w.v.agent_cap(), 25 * U, "capped at the ceiling");
+    w.now += DAY;
+    proved_supply(&mut w, 25 * U);
+    proved_supply(&mut w, 25 * U);
+    assert_eq!(w.v.agent_cap(), 25 * U);
+    assert_eq!(w.v.trust.level, 2, "no level growth past the ceiling");
+    assert!(w.v.trust_view().at_ceiling);
+}
+
+#[test]
+fn a_trusted_resolution_never_counts_and_resets_trust() {
+    let mut w = World::with(trust_pol());
+    w.credit(500 * U);
+    proved_supply(&mut w, 10 * U);
+    proved_supply(&mut w, 10 * U);
+    assert_eq!(w.v.trust.level, 1);
+    let r =
+        w.v.agent_act(&TH, w.now, Action::Withdraw { amount: 10 * U });
+    w.run(r).unwrap();
+    let _ = w.sign_ok();
+    let r = w.v.dao_resolve(&TH, w.now, true);
+    w.run(r).unwrap();
+    assert_eq!(w.v.trust.level, 0);
+    assert_eq!(w.v.trust.proved_total, 2, "a DAO resolution is not a proof");
+    assert_eq!(
+        w.v.trust.last_reset.map(|(_, why)| why),
+        Some(TrustReset::OpIntervention)
+    );
+}
+
+#[test]
+fn agent_refusals_reset_trust_outsider_refusals_do_not() {
+    let mut w = World::with(trust_pol());
+    w.credit(500 * U);
+    proved_supply(&mut w, 10 * U);
+    proved_supply(&mut w, 10 * U);
+    assert_eq!(w.v.trust.level, 1);
+    let n = w.now;
+    w.v.record_rejection(n, Caller::Public, "agent_act", Reject::NotAllowed);
+    w.v.record_rejection(n, Caller::Dao, "dao_act", Reject::AboveAgentMax);
+    w.v.record_rejection(
+        n,
+        Caller::Guardian(G1.into()),
+        "agent_act",
+        Reject::NotAllowed,
+    );
+    assert_eq!(
+        w.v.trust.level, 1,
+        "nobody else can push the agent back to the floor"
+    );
+    w.v.record_rejection(n, Caller::Agent, "agent_act", Reject::TooSoon);
+    w.v.record_rejection(n, Caller::Agent, "agent_act", Reject::Busy);
+    assert_eq!(w.v.trust.level, 1, "operational refusals do not reset");
+    w.v.record_rejection(n, Caller::Agent, "agent_act", Reject::NotAllowed);
+    assert_eq!(w.v.trust.level, 0, "asking for an outflow resets");
+    assert_eq!(
+        w.v.trust.last_reset.map(|(_, why)| why),
+        Some(TrustReset::Refusal)
+    );
+}
+
+fn check_reset(w: &mut World, why: TrustReset, f: &dyn Fn(&mut World)) {
+    earn_one_step(w);
+    f(w);
+    assert_eq!(w.v.trust.level, 0, "{why:?} resets");
+    assert_eq!(w.v.trust.last_reset.map(|(_, y)| y), Some(why));
+}
+
+#[test]
+fn every_intervention_resets_trust() {
+    let mut w = World::with(trust_pol());
+    w.credit(2_000 * U);
+    check_reset(&mut w, TrustReset::GuardianPause, &|w| {
+        w.v.guardian_pause(w.now, G1, 10 * MIN).unwrap();
+        w.now += 10 * MIN;
+    });
+    check_reset(&mut w, TrustReset::GuardianVeto, &|w| {
+        let r =
+            w.v.dao_act(&TH, w.now, Action::SendToTreasury { amount: 50 * U });
+        w.run(r).unwrap();
+        let id = w.v.parked.last().unwrap().id;
+        w.v.guardian_veto(w.now, G2, id).unwrap();
+    });
+    check_reset(&mut w, TrustReset::KeyRotated, &|w| {
+        w.v.set_agent_key(w.now, "ed25519:new-agent".into())
+            .unwrap();
+    });
+    check_reset(&mut w, TrustReset::Dao, &|w| {
+        w.v.dao_reset_trust(w.now).unwrap();
+    });
+    check_reset(&mut w, TrustReset::OpIntervention, &|w| {
+        let r =
+            w.v.agent_act(&TH, w.now, Action::Withdraw { amount: 10 * U });
+        w.run(r).unwrap();
+        let _ = w.sign_ok();
+        let r = w.v.cancel(&TH, w.now, &Caller::Dao);
+        w.run(r).unwrap();
+        let tx = w.sign_ok();
+        w.settle(tx, true).unwrap();
+    });
+    check_reset(&mut w, TrustReset::OpIntervention, &|w| {
+        let r = w.v.guardian_unwind(&TH, w.now, G1);
+        w.run(r).unwrap();
+        w.finish();
+    });
+}
+
+#[test]
+fn a_new_or_rotated_key_waits_a_full_epoch_before_its_first_step() {
+    let mut w = World::with(trust_pol());
+    w.credit(500 * U);
+    w.v.set_agent_key(w.now, "ed25519:fresh".into()).unwrap();
+    proved_supply(&mut w, 10 * U);
+    proved_supply(&mut w, 10 * U);
+    proved_supply(&mut w, 10 * U);
+    assert_eq!(w.v.trust.level, 0, "no step in the epoch of the rotation");
+    w.now += DAY;
+    proved_supply(&mut w, 10 * U);
+    assert_eq!(w.v.trust.level, 1);
+}
+
+#[test]
+fn trust_fields_follow_the_lanes() {
+    let a = trust_pol();
+    let with = |f: &dyn Fn(&mut Policy)| {
+        let mut b = a.clone();
+        f(&mut b);
+        policy::classify(&a, &b)
+    };
+    assert_eq!(with(&|p| p.trust_floor_per_action = 5 * U), Lane::Fast);
+    assert_eq!(with(&|p| p.trust_floor_per_action = 50 * U), Lane::Short);
+    assert_eq!(with(&|p| p.trust_step_per_action = U), Lane::Fast);
+    assert_eq!(with(&|p| p.trust_step_per_action = 40 * U), Lane::Short);
+    assert_eq!(with(&|p| p.trust_landings_per_step = 5), Lane::Fast);
+    assert_eq!(with(&|p| p.trust_landings_per_step = 1), Lane::Short);
+    assert_eq!(with(&|p| p.trust_epochs_per_step = 3), Lane::Fast);
+    let mut fast = a.clone();
+    fast.trust_landings_per_step = 0;
+    assert_eq!(
+        policy::validate(&fast, &floors()),
+        Err(policy::PolicyError::TrustTooFast)
+    );
+    fast.trust_landings_per_step = 1;
+    fast.trust_epochs_per_step = 0;
+    assert_eq!(
+        policy::validate(&fast, &floors()),
+        Err(policy::PolicyError::TrustTooFast)
+    );
+}
+
+#[test]
+fn policy_preview_matches_what_the_vote_would_do() {
+    let w = World::with(trust_pol());
+    // Loosen two fields: one long-lane, one short-lane.
+    let mut looser = w.v.policy.clone();
+    looser.supply_cap = 2_000_000_000;
+    looser.trust_floor_per_action = 40 * U;
+    let pv = w.v.preview_policy(&looser);
+    assert_eq!(pv.invalid, None);
+    assert_eq!(pv.lane, Lane::Long);
+    assert_eq!(pv.wait_ms, w.v.policy.long_window_ms);
+    assert_eq!(pv.vetoable_by, vec![G1.to_string(), G2.to_string()]);
+    assert_eq!(pv.agent_cap_before, 10 * U);
+    assert_eq!(pv.agent_cap_after, 40 * U);
+    assert_eq!(pv.exposure_after.max_in_protocol, 2_000_000_000);
+    let fields: Vec<_> = pv
+        .changes
+        .iter()
+        .map(|c| (c.field.as_str(), c.loosens, c.lane))
+        .collect();
+    assert_eq!(
+        fields,
+        vec![
+            ("supply_cap", true, Lane::Long),
+            ("trust_floor_per_action", true, Lane::Short)
+        ]
+    );
+    // The real vote lands in the same lane.
+    let mut v = w.v.clone();
+    v.propose_policy(w.now, looser).unwrap();
+    assert_eq!(v.parked.last().unwrap().lane, Lane::Long);
+    // A tightening previews as FAST with nobody needed to veto.
+    let mut tighter = w.v.policy.clone();
+    tighter.agent_quota_per_epoch = 1;
+    let pv = w.v.preview_policy(&tighter);
+    assert_eq!((pv.lane, pv.wait_ms), (Lane::Fast, 0));
+    assert!(pv.vetoable_by.is_empty());
+    // An invalid policy says why.
+    let mut bad = w.v.policy.clone();
+    bad.epoch_ms = 0;
+    assert!(w.v.preview_policy(&bad).invalid.is_some());
+}
+
+#[test]
+fn outflow_preview_matches_the_fast_allowance() {
+    let mut w = World::with(trust_pol());
+    w.credit(100 * U);
+    let n = w.now;
+    let pv = w.v.preview_outflow(n, 20 * U);
+    assert_eq!((pv.lane, pv.wait_ms, pv.fast_left), (Lane::Fast, 0, 20 * U));
+    let pv = w.v.preview_outflow(n, 21 * U);
+    assert_eq!(pv.lane, Lane::Long);
+    assert_eq!(pv.wait_ms, w.v.policy.long_window_ms);
+    let r =
+        w.v.dao_act(&TH, n, Action::SendToTreasury { amount: 15 * U });
+    w.run(r).unwrap();
+    w.finish();
+    let pv = w.v.preview_outflow(w.now, 6 * U);
+    assert_eq!((pv.lane, pv.fast_left), (Lane::Long, 5 * U));
+    // A new epoch restores the fast allowance.
+    let pv = w.v.preview_outflow(w.now + DAY, 6 * U);
+    assert_eq!(pv.lane, Lane::Fast);
+}
+
+#[test]
+fn extra_json_fields_cannot_add_a_destination() {
+    // The contract deserializes `agent_act`'s argument with serde. Unknown fields are ignored, and
+    // no field of any action can carry a destination (red-team finding red-a: test, not a bug).
+    let a: Action = serde_json::from_str(
+        r#"{"action":"supply","amount":"5000000","to":"0x000000000000000000000000000000000000dEaD","recipient":"0xdead","destination":"attacker.testnet"}"#,
+    )
+    .unwrap();
+    assert_eq!(a, Action::Supply { amount: 5 * U });
+    let b: Action = serde_json::from_str(
+        r#"{"action":"withdraw","amount":"1000000","to":"0xdead","receiver":"x"}"#,
+    )
+    .unwrap();
+    assert_eq!(b, Action::Withdraw { amount: U });
+    assert!(serde_json::from_str::<Action>(
+        r#"{"action":"send_to_address","to":"0xdead","amount":"1"}"#
+    )
+    .is_err());
+    // The accepted request builds only transactions to USDC, the pool or the vault itself
+    // (`World::absorb` asserts the target, chain id and zero value of every signed payload).
+    let mut w = World::new();
+    w.credit(10 * U);
+    let r = w.v.agent_act(&TH, w.now, a);
+    w.run(r).unwrap();
+    w.finish();
+    assert_eq!(w.v.ledger.principal, 5 * U);
+    assert!(w.signed_log.len() >= 2);
 }

@@ -21,7 +21,8 @@ export function dur(ms) {
   if (s < 60) return `${s} s`;
   if (s < 3600) return `${Math.floor(s / 60)} min${s % 60 >= 30 && s < 600 ? ` ${s % 60} s` : ""}`;
   if (s < 86400) return `${(s / 3600).toFixed(s % 3600 ? 1 : 0)} h`;
-  return `${(s / 86400).toFixed(s % 86400 ? 1 : 0)} days`;
+  const d = (s / 86400).toFixed(s % 86400 ? 1 : 0);
+  return `${d} ${d === "1" ? "day" : "days"}`;
 }
 
 export const when = (ms) => (ms ? new Date(ms).toISOString().replace("T", " ").slice(0, 19) + " UTC" : "n/a");

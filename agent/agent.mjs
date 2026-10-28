@@ -1,15 +1,19 @@
 // The Bridle agent: an untrusted operator holding only the vault's `agent_act` function-call key.
 //
-//   node agent/agent.mjs <vault> --key <agent key file or ed25519:...> [--loop] [--say "<instruction>"]
+//   node agent/agent.mjs <vault> --key <agent key file or ed25519:...> [--loop] [--say "<instruction>"] [--note <file>]
 //                        [--keeper <near account> [--keeper-key <key file or ed25519:...>]] [--min-apr-bps 50]
 //
 // Without --say it reads Aave's rate and the vault state and acts within the mandate (planFromMarket).
 // With --say it obeys the instruction like a prompt-injected LLM would (planFromText), or, if
 // OPENAI_BASE_URL / OPENAI_API_KEY / OPENAI_MODEL are set, asks that model. Either way the vault
 // decides on-chain; the agent prints the vault's answer.
+//
+// With --note it reads a market note (third-party data, as a real agent reads feeds) while doing its
+// job; an instruction hidden in the note is an indirect prompt injection (agent/notes/).
+import fs from "fs";
 import { account, baseRpc, call, log, sleep, view } from "../scripts/lib.mjs";
 import { Keeper } from "./keeper.mjs";
-import { planFromMarket, planFromText, planWithLlm } from "./planner.mjs";
+import { planFromMarket, planFromNote, planFromText, planWithLlm } from "./planner.mjs";
 
 /** Aave v3 `getReserveData(asset).currentLiquidityRate` (ray). */
 export async function aaveRate(pool, asset) {
@@ -26,11 +30,17 @@ export async function act(vault, keyFile, plan) {
   return { near_tx: r.hash, result: r.value, events: r.events.map((e) => e.event) };
 }
 
-async function once(vault, keyFile, say, minAprBps = 50n) {
+async function once(vault, keyFile, say, minAprBps = 50n, note = null) {
   const st = await view(vault, "get_state");
   let plan;
-  if (say && process.env.OPENAI_BASE_URL && process.env.OPENAI_API_KEY) {
-    plan = await planWithLlm(say, st, { baseUrl: process.env.OPENAI_BASE_URL, apiKey: process.env.OPENAI_API_KEY, model: process.env.OPENAI_MODEL || "gpt-4o-mini" });
+  const llm = process.env.OPENAI_BASE_URL && process.env.OPENAI_API_KEY;
+  const llmOpts = { baseUrl: process.env.OPENAI_BASE_URL, apiKey: process.env.OPENAI_API_KEY, model: process.env.OPENAI_MODEL || "gpt-4o-mini" };
+  if (note && llm) {
+    plan = await planWithLlm("Read today's market note and manage the vault within your mandate.", st, { ...llmOpts, note });
+  } else if (note) {
+    plan = planFromNote(note, st);
+  } else if (say && llm) {
+    plan = await planWithLlm(say, st, llmOpts);
   } else if (say) {
     plan = planFromText(say, st);
   } else {
@@ -51,7 +61,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   // Optional: drive accepted operations to their landing proof (any NEAR account can be the keeper).
   const keeper = a.includes("--keeper") ? new Keeper(vault, opt("--keeper"), { keyFile: opt("--keeper-key") }) : null;
   do {
-    const res = await once(vault, keyFile, opt("--say"), BigInt(opt("--min-apr-bps", "50")));
+    const note = opt("--note") ? fs.readFileSync(opt("--note"), "utf8") : null;
+    const res = await once(vault, keyFile, opt("--say"), BigInt(opt("--min-apr-bps", "50")), note);
     if (res.result?.ok && keeper) {
       for (let did; (did = await keeper.tick()) !== null; ) {
         log("keeper:", did);

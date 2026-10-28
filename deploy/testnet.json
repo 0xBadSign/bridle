@@ -2,7 +2,9 @@
   "parent": "bridle-hq.testnet",
   "vault": "vault.bridle-hq.testnet",
   "dao": "bridle-hq.sputnik-v2.testnet",
-  "dao_council": ["bridle-hq.testnet"],
+  "dao_council": [
+    "bridle-hq.testnet"
+  ],
   "dao_creator": "bridle-probe-1028.testnet",
   "vault_funding_near": "5",
   "key_allowance_near": "0.5",
@@ -33,6 +35,10 @@
     "epoch_ms": 86400000,
     "max_pause_ms": 1800000,
     "max_vetoes_per_epoch": 3,
+    "trust_floor_per_action": "10000000",
+    "trust_step_per_action": "5000000",
+    "trust_landings_per_step": 3,
+    "trust_epochs_per_step": 1,
     "treasury_path": "treasury"
   }
 }

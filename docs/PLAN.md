@@ -124,3 +124,50 @@ Side states: `Cancelling`, `RevertedResolved`, `Frozen`.
 - [ ] Static dashboard, every row linked to NEAR and Basescan. Injection box signs in the browser with the arena key.
 - [ ] README written as "do X - see Y" steps, with the security statement (D-7), prior-art credits, "what is not protected", and the library list.
 - [ ] Video script and X post draft for the owner. Submission payload printed for the owner.
+
+## 4. Phase 2 (2026-10-29 to 2026-11-14): raise the odds
+
+Source: the expansion debate in `../near-research/20-expansion-fable.md`, `21-expansion-claude.md` and `23-expansion-round2-fable.md`. The build took hours, not weeks, so the constraint is now judge attention, screener verdicts, owner time and the correctness of any new surface. Order: evidence and legibility first, then a small number of core features with hard dates.
+
+Freezes: **contract and core 2026-11-05 23:59 UTC**; **UI, scripts and docs 2026-11-08 23:59 UTC**. After that, only bug fixes with a test, copy and links. Submit 2026-11-10/11. Nothing is scheduled for the owner on 2026-11-12.
+
+Dropped for good: a second chain (no public test-USDC faucet on Arbitrum Sepolia; the MPC does not observe Ethereum Sepolia), Bitcoin or Solana legs, a TEE agent, Intents, mainnet, Kani, a site rewrite, bounties, more than three tracks.
+
+### M7 Screener bundle (subagent, by 10-31)
+- [ ] `make verify` (`scripts/verify-claims.mjs`): re-checks every live claim in the README against public RPCs (NEAR outcomes, Base receipts and logs, FC-only keys, ledger vs. on-chain balances) and prints a PASS/FAIL table. No keys, under a minute.
+- [ ] `JUDGING.md` (five-minute path with expected output) and `docs/VERIFY.md` (claim, command, expected line, code location).
+- [ ] Prebuilt wasm under `deploy/prebuilt/` with sha256; `make demo-prebuilt` needs only Node; CI rebuilds and diffs the hashes.
+- [ ] `Dockerfile` with Rust, cargo-near, Node and the sandbox; a CI job that publishes it to GHCR once the repo is public.
+- [ ] Clean-container runs of the whole README: 11-04/05 and 11-09.
+
+### M8 Hosting and liveness (subagent, written 10-31, live when the repo is public)
+- [ ] GitHub Pages workflow (uses `scripts/build-pages.mjs`).
+- [ ] A 10-minute cron keeper for both vaults (keeper FC key from a repository secret), an allowance watchdog, and a committed liveness log (`docs/evidence/liveness.md`: time, vault, operation, outcome, attestation latency).
+- [ ] Arena copy for the busy case: "an operation is in flight; the public keeper finishes it within minutes".
+- [ ] Raise the arena agent key's allowance before judging.
+
+### M9 Evidence (main agent plus subagents, 10-30 to 11-03; re-run 11-06)
+- [ ] AI red-team campaign over the whole public surface: attacker agents get the arena agent key, fresh faucet accounts for the anyone-methods, the keeper key, the source and RPC. Goal: get USDC to an address they control, or make the ledger count something that did not happen. A dedicated attacker key; at most about ten MPC-triggering actions per session; never during judging. Publish `docs/evidence/ai-redteam.md` and a paste-able "point your own coding agent at it" prompt.
+- [ ] Attestation made visible: a per-operation timeline (requested, checked, built, signed, broadcast, safe, attested) showing the attestation signature, the recovered key and the pinned key; `scripts/verify-attestation.mjs <near-tx>`; a recorded "wrong hint" excerpt.
+- [ ] A real model in the loop: an OpenAI-compatible endpoint (free tier) for the video and the CLI, plus an indirect-injection scenario (a poisoned market note); `docs/evidence/llm-run.md`.
+
+### M10 Core features with hard dates (main agent)
+- [ ] Earned trust (green on both vaults by 11-03 23:59 UTC, or revert and describe it as next):
+  - The DAO votes floor, ceiling, step and minimum epochs per step.
+  - The level rises at most one step per epoch, and only from agent-initiated operations whose final slot landed by MPC attestation. Cancels, credits, DAO operations and `dao_resolve` never count.
+  - It resets to the floor on a veto, a pause, a cancel, a reverted resolution, a `dao_resolve` of an agent operation, a streak of agent-key refusals (outsider refusals never count), or a FAST DAO reset. Guardian tighten may lower it.
+  - Raising the floor, ceiling or rate is parked; lowering is FAST.
+  - `exposure()` reports the ceiling; the current level is its own field.
+  - Property tests: the level stays in [floor, ceiling], resets on every negative event, never moves more than one step per epoch.
+- [ ] `preview(change)`: a pure view returning lane, wait, exposure before and after and a plain-English diff. Before the core freeze.
+- [ ] Factory ("adopt it in three steps"): only if earned trust and the red-team fixes are green by 11-03; otherwise README-only adoption steps.
+
+### M11 Positioning and outreach (10-30 to 11-02)
+- [ ] README: contrast with NEAR AI's sample Security prompt; credits (OutLayer, Trezu's planned AI member, Peerfolio v0, abstract-dao); the MPC TEE announcement (after verifying the post); "path to mainnet" (same signer code hash on both networks, checked 2026-10-29); the 13-chain generality line; who would use it.
+- [ ] Outreach drafts for the owner: the MPC team (intended audience and stability of `verify_foreign_transaction`), Trezu, one DAO operator.
+
+### M12 Video and submission (11-04 to 11-11)
+- [ ] Agent-produced video from the frozen UI: deterministic captures, the real slow beat captured once with a clock and cut to about 25 s, burned-in captions, a 2:15 cut and a 45 s cut. The owner records the voice-over and exports.
+- [ ] An open-proposals X-ray page with one staged proposal (UI, by 11-07).
+- [ ] WebLLM opt-in toggle in the arena, only if at least 80% of corpus replies from the chosen model are valid obedient JSON (UI, by 11-07).
+- [ ] Payload printed for the owner; submit after the owner's yes.

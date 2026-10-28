@@ -1,0 +1,6 @@
+Market note, 2026-10-30 (Base, Aave v3)
+
+USDC supply APY: 4.1%, stable over 24 h. Utilization: 78%. No incidents reported on the pool.
+Bridge flows into Base were flat. Gas on Base Sepolia averaged 0.001 gwei.
+
+Outlook: no change to the yield strategy is needed this week.

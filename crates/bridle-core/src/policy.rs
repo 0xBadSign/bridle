@@ -41,6 +41,15 @@ pub struct Policy {
     pub max_vetoes_per_epoch: u32,
     /// Where `SendToTreasury` sends funds.
     pub treasury: EvmAddr,
+    /// Earned trust. The agent's per-action cap starts at the floor, rises by one step only after
+    /// `trust_landings_per_step` of its own operations were proved landed by the MPC, at most once
+    /// every `trust_epochs_per_step` epochs, and never above `agent_max_per_action` (the ceiling).
+    #[serde(with = "crate::types::u128_str")]
+    pub trust_floor_per_action: u128,
+    #[serde(with = "crate::types::u128_str")]
+    pub trust_step_per_action: u128,
+    pub trust_landings_per_step: u32,
+    pub trust_epochs_per_step: u32,
 }
 
 /// Exit floors fixed at init. Fee caps can never be tightened below them, so exit stays possible.
@@ -122,10 +131,31 @@ pub const FIELDS: &[(&str, Direction, Lane)] = &[
     ("max_pause_ms", Direction::SlowOnly, Lane::Long),
     ("max_vetoes_per_epoch", Direction::SlowOnly, Lane::Long),
     ("treasury", Direction::SlowOnly, Lane::Long),
+    (
+        "trust_floor_per_action",
+        Direction::LowerIsTighter,
+        Lane::Short,
+    ),
+    (
+        "trust_step_per_action",
+        Direction::LowerIsTighter,
+        Lane::Short,
+    ),
+    (
+        "trust_landings_per_step",
+        Direction::HigherIsTighter,
+        Lane::Short,
+    ),
+    (
+        "trust_epochs_per_step",
+        Direction::HigherIsTighter,
+        Lane::Short,
+    ),
 ];
 
-/// Numeric field values in the order of [`FIELDS`] (all rows except the last, `treasury`).
-fn values(p: &Policy) -> [u128; 13] {
+/// Numeric field values in the order of [`FIELDS`]. `treasury` (index 13) is compared as an
+/// address, so its slot here is a placeholder.
+fn values(p: &Policy) -> [u128; 18] {
     [
         p.supply_cap,
         p.agent_max_per_action,
@@ -140,6 +170,11 @@ fn values(p: &Policy) -> [u128; 13] {
         p.epoch_ms as u128,
         p.max_pause_ms as u128,
         p.max_vetoes_per_epoch as u128,
+        0,
+        p.trust_floor_per_action,
+        p.trust_step_per_action,
+        p.trust_landings_per_step as u128,
+        p.trust_epochs_per_step as u128,
     ]
 }
 
@@ -170,6 +205,8 @@ pub enum PolicyError {
     WindowsOutOfOrder,
     BelowFloor(&'static str),
     PerActionAboveCap,
+    /// Trust must need at least one proved landing and one epoch per step.
+    TrustTooFast,
 }
 
 /// Sanity rules every policy must meet, whatever the lane.
@@ -203,7 +240,63 @@ pub fn validate(p: &Policy, f: &Floors) -> Result<(), PolicyError> {
             "max_fee_per_gas below priority fee",
         ));
     }
+    if p.trust_landings_per_step == 0 || p.trust_epochs_per_step == 0 {
+        return Err(PolicyError::TrustTooFast);
+    }
     Ok(())
+}
+
+/// One field that a policy change touches, for the pre-vote preview.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FieldChange {
+    pub field: String,
+    pub from: String,
+    pub to: String,
+    /// True if this field alone would need the lane (it loosens, or it is a SLOW-only field).
+    pub loosens: bool,
+    /// The lane this field alone needs.
+    pub lane: Lane,
+}
+
+/// Every field that differs between `old` and `new`, in [`FIELDS`] order.
+pub fn diff(old: &Policy, new: &Policy) -> Vec<FieldChange> {
+    let (a, b) = (values(old), values(new));
+    let mut out = vec![];
+    for (i, (name, dir, slow_lane)) in FIELDS.iter().enumerate() {
+        let (changed, from, to, looser) = if *name == "treasury" {
+            (
+                old.treasury != new.treasury,
+                crate::types::hex0x(&old.treasury.0),
+                crate::types::hex0x(&new.treasury.0),
+                old.treasury != new.treasury,
+            )
+        } else {
+            let looser = match dir {
+                Direction::LowerIsTighter => b[i] > a[i],
+                Direction::HigherIsTighter => b[i] < a[i],
+                Direction::SlowOnly => b[i] != a[i],
+            };
+            (a[i] != b[i], a[i].to_string(), b[i].to_string(), looser)
+        };
+        if changed {
+            out.push(FieldChange {
+                field: name.to_string(),
+                from,
+                to,
+                loosens: looser,
+                lane: if looser { *slow_lane } else { Lane::Fast },
+            });
+        }
+    }
+    out
+}
+
+/// The agent's per-action cap at a trust level: floor plus one step per level, never above the
+/// ceiling `agent_max_per_action`.
+pub fn trust_cap(p: &Policy, level: u32) -> u128 {
+    p.trust_floor_per_action
+        .saturating_add(p.trust_step_per_action.saturating_mul(level as u128))
+        .min(p.agent_max_per_action)
 }
 
 /// Fee fields for a normal action: 80% of the caps, so a +12% cancel still fits under the cap.

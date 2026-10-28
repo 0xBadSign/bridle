@@ -70,10 +70,13 @@ export function overview(d, key) {
   ])}
 <p class="muted small">Computed by the same code that enforces the policy. It holds if the NEAR MPC network, Base and Aave behave; it is not a loss guarantee.</p></div>
 
+${trustCard(s)}
+
 <h2>The mandate (policy voted by the DAO)</h2>
 <div class="card">${kv([
     ["Cap on funds in Aave", esc(usdc(p.supply_cap))],
-    ["Agent: most per action", esc(usdc(p.agent_max_per_action))],
+    ["Agent: most per action (ceiling)", esc(usdc(p.agent_max_per_action))],
+    ["Agent: earned trust", p.trust_floor_per_action === undefined ? "-" : `starts at ${esc(usdc(p.trust_floor_per_action))}, +${esc(usdc(p.trust_step_per_action))} per step; a step needs ${esc(p.trust_landings_per_step)} proved landing(s), at most one step ${p.trust_epochs_per_step === 1 ? "per epoch" : `every ${esc(p.trust_epochs_per_step)} epochs`}`],
     ["Agent: actions per epoch", esc(p.agent_quota_per_epoch)],
     ["Agent: minimum gap between actions", esc(dur(p.agent_min_interval_ms))],
     ["DAO outflow allowed without parking", esc(usdc(p.fast_outflow_per_epoch)) + " per epoch"],
@@ -101,6 +104,32 @@ export function overview(d, key) {
   ${fullKeys.map((k) => `<tr><td><code>${esc(k.public_key)}</code></td><td>${pill("FULL ACCESS", "bad")}</td><td></td><td></td></tr>`).join("")}
   </tbody></table></div>
 </div>`;
+}
+
+const resetName = (r) => ({
+  refusal: "the agent asked for something its mandate forbids",
+  guardian_pause: "a guardian paused the vault",
+  guardian_veto: "a guardian vetoed a parked item",
+  op_intervention: "an agent operation was cancelled, proved reverted, unwound or resolved by the DAO",
+  key_rotated: "the DAO rotated the agent key",
+  dao: "the DAO reset it",
+})[r] || r;
+
+function trustCard(s) {
+  const t = s.trust;
+  if (!t) return "";
+  const steps = t.landings_per_step || 1;
+  const pct = Math.min(100, Math.round((100 * t.landings) / steps));
+  const wait = t.next_step_epoch > s.epoch.index ? `next step possible from ${esc(when(t.next_step_epoch * s.policy.epoch_ms))} (one step per epoch)` : "a step is possible now";
+  const last = t.last_reset ? `${esc(resetName(t.last_reset[1]))}, ${esc(new Date(t.last_reset[0]).toISOString().replace("T", " ").slice(0, 16))} UTC` : "never";
+  return `<h2>The agent's earned trust</h2>
+<div class="card">${kv([
+    ["Agent's cap per action now", `<b>${esc(usdc(t.cap))}</b> <span class="muted small">floor ${esc(usdc(t.floor))}, ceiling ${esc(usdc(t.ceiling))}, level ${esc(t.level)}</span>`],
+    ["Toward the next step", t.at_ceiling ? "at the ceiling" : `${esc(t.landings)} of ${esc(steps)} proved landing(s) <span class="trustbar"><span style="width:${pct}%"></span></span>; ${wait}`],
+    ["Operations proved by the MPC (all time)", esc(t.proved_total)],
+    ["Resets to the floor", `${esc(t.resets)}; last: ${last}`],
+  ])}
+<p class="muted small">The cap grows only from the agent's own operations whose every step the NEAR MPC network attested; a DAO resolution never counts. Any intervention or out-of-mandate request sends it back to the floor. The ceiling, not the current cap, is what <code>exposure()</code> reports.</p></div>`;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -148,7 +177,7 @@ export function ops(d, wait) {
       ${slotStatus(sl.status)} ${landed ? pill("attested by the MPC network", "ok") : ""} ${cur ? pill("current step", "info") : ""}
       ${sl.signing ? pill("MPC is signing", "info") : ""} ${sl.verifying?.length ? pill(`MPC is verifying (${sl.verifying.length})`, "info") : ""}
       ${drafts.map(([w, x]) => `<span class="small muted">${esc(w)}: nonce ${esc(x.params.nonce)}${x.signed.length ? ", " + x.signed.map((t) => a(links.baseTx(t.hash), short(t.hash, 10, 6), "mono")).join(" ") : ", not signed yet"}</span>`).join(" ")}
-      ${landed ? `<span class="small muted">proved by ${a(links.baseTx(sl.status.landed.tx), short(sl.status.landed.tx, 10, 6), "mono")}</span>` : ""}
+      ${landed ? `<span class="small muted">proved by ${a(links.baseTx(sl.status.landed.tx), short(sl.status.landed.tx, 10, 6), "mono")}</span> <button class="ghost small" data-verify-tx="${esc(sl.status.landed.tx)}" data-vault="${esc(d.id)}" data-op="${esc(op.id)}" data-slot="${esc(i)}">Verify the proof yourself</button>` : ""}
     </div>`;
   }).join("")}
 </div>`;

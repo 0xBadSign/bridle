@@ -1,0 +1,52 @@
+# Public keeper cron: every 10 minutes, finish any in-flight operation on both vaults and append
+# one record per vault to liveness.jsonl on the orphan `liveness` branch. Nothing is committed to
+# main. Needs repository secrets KEEPER_CRON_KEY_VAULT and KEEPER_CRON_KEY_ARENA (function-call
+# keys of cron.bridle-hq.testnet that can only call settle, advance, probe, cancel, credit_deposit).
+name: keeper
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: keeper
+  cancel-in-progress: false
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Keeper tick (both vaults) and allowance watchdog
+        env:
+          KEEPER_CRON_KEY_VAULT: ${{ secrets.KEEPER_CRON_KEY_VAULT }}
+          KEEPER_CRON_KEY_ARENA: ${{ secrets.KEEPER_CRON_KEY_ARENA }}
+        run: node scripts/cron-tick.mjs --as cron.bridle-hq.testnet --out "$RUNNER_TEMP/tick.jsonl" --budget-s 420
+      - name: Append the tick to the liveness branch
+        if: always()
+        run: |
+          [ -s "$RUNNER_TEMP/tick.jsonl" ] || exit 0
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          for attempt in 1 2 3; do
+            rm -rf "$RUNNER_TEMP/live"; git worktree prune
+            if git ls-remote --exit-code --heads origin liveness >/dev/null; then
+              git fetch origin liveness
+              git worktree add -B liveness "$RUNNER_TEMP/live" origin/liveness
+            else
+              git worktree add --orphan -b liveness "$RUNNER_TEMP/live"
+              printf '# Bridle liveness log\n\nOne JSON record per keeper tick per vault: `liveness.jsonl`. Written by `.github/workflows/keeper.yml`. Summarised by `scripts/liveness-report.mjs`.\n' > "$RUNNER_TEMP/live/README.md"
+            fi
+            cat "$RUNNER_TEMP/tick.jsonl" >> "$RUNNER_TEMP/live/liveness.jsonl"
+            git -C "$RUNNER_TEMP/live" add -A
+            git -C "$RUNNER_TEMP/live" commit -m "liveness $(date -u +%Y-%m-%dT%H:%MZ)"
+            git -C "$RUNNER_TEMP/live" push origin liveness && exit 0
+            sleep $((attempt * 5))
+          done
+          exit 1

@@ -64,16 +64,20 @@ pub struct VerifyResp {
     pub signature: SigResp,
 }
 
-/// State layout of the first testnet deployment (state version 1), for `migrate`.
+/// State layout of state version 2 (live 2026-10-28 to the earned-trust upgrade), for `migrate`.
 #[derive(borsh::BorshDeserialize)]
-struct ContractV1 {
+struct ContractV2 {
     owner: AccountId,
     signer: AccountId,
     vault_pk: Vec<u8>,
     foreign_pk: Vec<u8>,
     key_allowance: NearToken,
-    vault: bridle_core::legacy::VaultV1,
+    vault: bridle_core::legacy::VaultV2,
 }
+
+/// Function-call key allowance after a migration, at least. Version 2 used 0.5 NEAR, which the
+/// published arena key could exhaust during judging.
+const MIN_KEY_ALLOWANCE: NearToken = NearToken::from_near(2);
 
 #[near(contract_state)]
 #[derive(PanicOnDefault)]
@@ -377,8 +381,17 @@ impl Contract {
         if let Err(v) = self.dao_only("set_agent_key") {
             return v;
         }
-        let out = self.vault.set_agent_key(pk_string(&public_key));
+        let out = self.vault.set_agent_key(now(), pk_string(&public_key));
         self.finish(Caller::Dao, "set_agent_key", out)
+    }
+
+    /// Send the agent's earned trust back to the floor (FAST: it only restricts).
+    pub fn dao_reset_trust(&mut self) -> Value {
+        if let Err(v) = self.dao_only("dao_reset_trust") {
+            return v;
+        }
+        let out = self.vault.dao_reset_trust(now());
+        self.finish(Caller::Dao, "dao_reset_trust", out)
     }
 
     pub fn propose_upgrade(&mut self, code_hash: Hash32) -> Value {
@@ -579,19 +592,22 @@ impl Contract {
         let raw = env::storage_read(b"STATE").unwrap_or_else(|| env::panic_str("no state"));
         let mut old: Contract = match borsh::from_slice::<Contract>(&raw) {
             Ok(c) => c,
-            Err(_) => match borsh::from_slice::<ContractV1>(&raw) {
-                Ok(v1) => Contract {
-                    owner: v1.owner,
-                    signer: v1.signer,
-                    vault_pk: v1.vault_pk,
-                    foreign_pk: v1.foreign_pk,
-                    key_allowance: v1.key_allowance,
-                    vault: v1.vault.into(),
+            Err(_) => match borsh::from_slice::<ContractV2>(&raw) {
+                Ok(v2) => Contract {
+                    owner: v2.owner,
+                    signer: v2.signer,
+                    vault_pk: v2.vault_pk,
+                    foreign_pk: v2.foreign_pk,
+                    key_allowance: v2.key_allowance,
+                    vault: v2.vault.into(),
                 },
                 Err(_) => env::panic_str("unknown state layout"),
             },
         };
         old.vault.finish_upgrade();
+        if old.key_allowance < MIN_KEY_ALLOWANCE {
+            old.key_allowance = MIN_KEY_ALLOWANCE;
+        }
         let b = self_batch();
         if let Some(a) = old
             .vault
@@ -752,8 +768,21 @@ impl Contract {
             "upgrade_ready": v.upgrade_ready,
             "state_version": v.version,
             "credit_floor_block": v.credit_floor_block,
+            "trust": v.trust_view(),
+            "key_allowance": self.key_allowance,
             "now_ms": t,
         })
+    }
+
+    /// Pre-vote preview of a policy change: lane, wait, vetoing guardians, exposure and agent cap
+    /// before and after, and every field it touches. Changes nothing.
+    pub fn preview_policy(&self, policy: Policy) -> Value {
+        json!(self.vault.preview_policy(&policy))
+    }
+
+    /// Pre-vote preview of a DAO outflow to the treasury (FAST or parked, and the wait).
+    pub fn preview_outflow(&self, amount: near_sdk::json_types::U128) -> Value {
+        json!(self.vault.preview_outflow(now(), amount.0))
     }
 
     pub fn get_ops(&self) -> Value {

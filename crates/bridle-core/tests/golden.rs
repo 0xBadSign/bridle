@@ -215,3 +215,56 @@ fn verify_args_are_the_shape_the_signer_accepted() {
     let s: Value = serde_json::from_str(&foreign::sign_args_json(&e, "bridle", 0)).unwrap();
     assert_eq!(s["request"]["payload_v2"]["Ecdsa"], hex::encode(e));
 }
+
+#[test]
+fn signatures_with_leading_zero_bytes_are_encoded_canonically() {
+    // Red-team finding (red-b): `r` or `s` with a leading zero byte (about 1 signature in 128) was
+    // RLP-encoded as a 32-byte string, which Base nodes reject as a non-canonical integer.
+    let tx = evm::build(
+        &chain(),
+        &Call::Supply { amount: 1_000_000 },
+        &TxParams {
+            nonce: 7,
+            gas_limit: 300_000,
+            max_fee_per_gas: 100_000_000,
+            max_priority_fee_per_gas: 1_000_000,
+        },
+    );
+    let r = format!("00{}", "ab".repeat(31));
+    let s = format!("0000{}", "cd".repeat(30));
+    let sig = MpcSignature {
+        big_r: format!("02{r}"),
+        s: s.clone(),
+        recovery_id: 1,
+    };
+    let (raw, hash) = evm::assemble(&TestHasher, &tx, &sig).unwrap();
+    // The last three RLP items are v = 1, r as a 31-byte integer, s as a 30-byte integer.
+    let tail: Vec<u8> = [
+        vec![0x01, 0x80 + 31],
+        vec![0xab; 31],
+        vec![0x80 + 30],
+        vec![0xcd; 30],
+    ]
+    .concat();
+    assert!(
+        raw.ends_with(&tail),
+        "r and s must be minimal big-endian integers"
+    );
+    assert_eq!(hash, TestHasher.keccak256(&raw));
+    // Signatures without leading zeros are unchanged (the live golden transactions cover them).
+    let full = MpcSignature {
+        big_r: format!("02{}", "ab".repeat(32)),
+        s: "cd".repeat(32),
+        recovery_id: 0,
+    };
+    let (raw2, _) = evm::assemble(&TestHasher, &tx, &full).unwrap();
+    assert!(raw2.ends_with(
+        &[
+            [0x80, 0x80 + 32].as_slice(),
+            &[0xab; 32],
+            &[0x80 + 32],
+            &[0xcd; 32]
+        ]
+        .concat()
+    ));
+}

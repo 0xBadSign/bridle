@@ -3,3 +3,5 @@ node_modules/
 .private/
 *.log
 .env
+.demo-tmp/
+.scratch/

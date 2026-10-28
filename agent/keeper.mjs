@@ -16,9 +16,15 @@ const TOPIC = {
 const word = (a) => "0x" + a.toLowerCase().replace(/^0x/, "").padStart(64, "0");
 
 export class Keeper {
-  constructor(vault, signerAccount, { gasT = 150 } = {}) {
+  /**
+   * `signerAccount` is a keychain name or a ready near-api-js Account. `rpc` replaces the Base JSON-RPC
+   * (the offline demo injects a mock Base); `pollMs` is the wait between receipt polls.
+   */
+  constructor(vault, signerAccount, { gasT = 150, rpc = baseRpc, pollMs = 2000 } = {}) {
     this.vault = vault;
-    this.acct = account(signerAccount);
+    this.acct = typeof signerAccount === "string" ? account(signerAccount) : signerAccount;
+    this.rpc = rpc;
+    this.pollMs = pollMs;
     this.gasT = gasT;
   }
 
@@ -31,11 +37,11 @@ export class Keeper {
   }
 
   async safeHead() {
-    return parseInt((await baseRpc("eth_getBlockByNumber", ["safe", false])).result.number, 16);
+    return parseInt((await this.rpc("eth_getBlockByNumber", ["safe", false])).result.number, 16);
   }
 
   async receipt(hash) {
-    return (await baseRpc("eth_getTransactionReceipt", [hash])).result;
+    return (await this.rpc("eth_getTransactionReceipt", [hash])).result;
   }
 
   /** The log index of the log that proves `call` succeeded, or 0 for log-less checks. */
@@ -57,7 +63,7 @@ export class Keeper {
   }
 
   async broadcast(raw) {
-    const r = await baseRpc("eth_sendRawTransaction", [raw]);
+    const r = await this.rpc("eth_sendRawTransaction", [raw]);
     if (r.error && !/already known|nonce too low|replacement transaction underpriced|known transaction/i.test(r.error.message)) log("broadcast error", r.error.message);
     return r.result;
   }
@@ -85,10 +91,10 @@ export class Keeper {
           continue;
         }
         if (parseInt(rc.blockNumber, 16) > safe) return `${which} ${s.hash.slice(0, 10)} mined, waiting for safe head`;
-        if (now() < slot.cooldown_until_ms) return "verify cooldown";
+        if (st.now_ms < slot.cooldown_until_ms) return "verify cooldown";
         if (which === "main" && rc.status !== "0x1") {
           // Reverted: the MPC will never attest it. After the deadline anyone may probe the next nonce.
-          if (now() > slot.reserved_at_ms + st.policy.settle_deadline_ms && !slot.probe) {
+          if (st.now_ms > slot.reserved_at_ms + st.policy.settle_deadline_ms && !slot.probe) {
             const r = await this.call("probe", {});
             return `main reverted; probe -> ${JSON.stringify(r.value)}`;
           }
@@ -109,10 +115,10 @@ export class Keeper {
     const st = await this.state();
     const D = st.chain.vault.toLowerCase();
     let rc;
-    while (!(rc = await this.receipt(txHash))) await sleep(2000);
+    while (!(rc = await this.receipt(txHash))) await sleep(this.pollMs);
     const l = rc.logs.find((x) => x.address.toLowerCase() === st.chain.usdc.toLowerCase() && x.topics[0] === TOPIC.transfer && x.topics[2] === word(D));
     if (!l) throw new Error("no USDC transfer to the vault in this tx");
-    while ((await this.safeHead()) < parseInt(rc.blockNumber, 16)) await sleep(5000);
+    while ((await this.safeHead()) < parseInt(rc.blockNumber, 16)) await sleep(this.pollMs * 2.5);
     const from = "0x" + l.topics[1].slice(26);
     const amount = BigInt(l.data).toString();
     const r = await this.call("credit_deposit", { tx: txHash, hints: this.hints(rc, parseInt(l.logIndex, 16)), from, amount });
@@ -133,8 +139,6 @@ export class Keeper {
     }
   }
 }
-
-const now = () => Date.now();
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   const a = process.argv.slice(2);

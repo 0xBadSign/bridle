@@ -12,6 +12,7 @@ export const BASE_RPC = process.env.BASE_RPC || "https://sepolia.base.org";
 export const SIGNER = process.env.MPC_SIGNER || "v1.signer-prod.testnet";
 export const KEYS_DIR = process.env.BRIDLE_KEYS || path.join(os.homedir(), ".near-credentials", "testnet");
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+export const POLL_MS = Number(process.env.NEAR_POLL_MS || 2000);
 export const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
 
 export async function rpc(url, method, params) {
@@ -70,7 +71,7 @@ export async function send(acct, receiverId, acts, { timeoutMs = 420000 } = {}) 
     const r = await nearRpc("EXPERIMENTAL_tx_status", { tx_hash: hash, sender_account_id: acct.accountId, wait_until: "FINAL" });
     if (r.result && r.result.final_execution_status === "FINAL") return outcome(hash, r.result);
     if (r.error && !/UNKNOWN_TRANSACTION|TIMEOUT/i.test(JSON.stringify(r.error))) throw new Error(`tx ${hash}: ${JSON.stringify(r.error).slice(0, 400)}`);
-    await sleep(2000);
+    await sleep(POLL_MS);
   }
   throw new Error(`timeout waiting for ${hash}`);
 }

@@ -10,6 +10,8 @@
     "agent": "node agent/agent.mjs"
   },
   "dependencies": {
-    "near-api-js": "7.4.0"
+    "@noble/curves": "2.2.0",
+    "near-api-js": "7.4.0",
+    "near-sandbox": "0.3.4"
   }
 }

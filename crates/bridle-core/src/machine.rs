@@ -33,6 +33,14 @@ pub const MAX_PARKED_OPEN: usize = 16;
 pub const MAX_OPS_KEPT: usize = 64;
 pub const MAX_REJECTIONS_KEPT: usize = 64;
 pub const MAX_CREDITS_KEPT: usize = 512;
+/// Verify requests that may be in flight for one slot, and credit proofs in flight overall.
+/// One per caller, so garbage hints from one caller cannot keep an honest keeper out.
+pub const MAX_VERIFIES_IN_FLIGHT: usize = 4;
+/// Deposits below this are not credited. Without it, dust transfers could push the consumed-proof
+/// window (see `credit_floor_block`) past a real deposit that was not yet credited.
+pub const MIN_CREDIT: u128 = 1_000_000;
+/// Version of the persisted `Vault` layout (see `legacy` for older layouts).
+pub const STATE_VERSION: u32 = 2;
 /// Aave's aToken balance can read a few base units below the supplied amount right after a supply
 /// (scaled-balance rounding; seen live: 32 USDC supplied, 31.999998 aUSDC). An exact-principal
 /// withdraw would then revert, so an unwind leaves this much dust in Aave.
@@ -131,8 +139,10 @@ pub struct Slot {
     /// A sign request timed out; a signature may still exist (red-team F3).
     pub sign_unknown: bool,
     pub signing: Option<(u64, Which)>,
-    pub verifying: Option<Verifying>,
-    pub cooldown_until_ms: u64,
+    /// Verify requests in flight: at most `MAX_VERIFIES_IN_FLIGHT`, one per caller.
+    pub verifying: Vec<Verifying>,
+    /// Per-caller cooldown after a failed verify (bounded).
+    pub cooldowns: Vec<(String, u64)>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
@@ -141,6 +151,8 @@ pub struct Verifying {
     pub which: Which,
     pub tx: Hash32,
     pub expected: Hash32,
+    /// Who asked (a NEAR account id); limits each caller to one request in flight.
+    pub caller: String,
 }
 
 #[derive(
@@ -268,6 +280,8 @@ pub struct PendingCredit {
     #[serde(with = "crate::types::u128_str")]
     pub amount: u128,
     pub expected: Hash32,
+    pub block_number: u64,
+    pub caller: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
@@ -311,6 +325,11 @@ pub enum Reject {
     BadCreditSender,
     CodeHashMismatch,
     BeforeDeadline,
+    /// The deposit's block is at or below the oldest evicted proof (`credit_floor_block`).
+    TooOld,
+    BelowMinCredit,
+    /// The parked policy would now loosen fields beyond its lane (the policy changed meanwhile).
+    StaleParked,
 }
 
 /// Something the contract must do.
@@ -380,11 +399,16 @@ pub struct Vault {
     pub paused_until_ms: u64,
     pub pause_cooldown_until_ms: u64,
     pub parked: Vec<Parked>,
-    pub credits: Vec<(Hash32, u64)>,
-    pub pending_credit: Option<PendingCredit>,
+    /// Consumed deposit proofs: (tx, log index, block number). Bounded; see `credit_floor_block`.
+    pub credits: Vec<(Hash32, u64, u64)>,
+    pub pending_credits: Vec<PendingCredit>,
     pub rejections: Vec<Rejection>,
     pub rejection_count: u64,
     pub upgrade_ready: Option<Hash32>,
+    /// Highest block number among evicted consumed proofs. Deposits at or below it are refused, so
+    /// evicting old entries can never make an old deposit creditable again (review finding 2a).
+    pub credit_floor_block: u64,
+    pub version: u32,
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -411,10 +435,12 @@ impl Vault {
             pause_cooldown_until_ms: 0,
             parked: vec![],
             credits: vec![],
-            pending_credit: None,
+            pending_credits: vec![],
             rejections: vec![],
             rejection_count: 0,
             upgrade_ready: None,
+            credit_floor_block: 0,
+            version: STATE_VERSION,
         })
     }
 
@@ -518,8 +544,8 @@ fn new_slot(call: Call) -> Slot {
         reserved_at_ms: 0,
         sign_unknown: false,
         signing: None,
-        verifying: None,
-        cooldown_until_ms: 0,
+        verifying: vec![],
+        cooldowns: vec![],
     }
 }
 
@@ -837,6 +863,7 @@ impl Vault {
 
 impl Vault {
     /// Anyone: ask the MPC to attest that one of the slot's signed transactions succeeded.
+    #[allow(clippy::too_many_arguments)]
     pub fn settle<H: Hasher>(
         &mut self,
         h: &H,
@@ -845,6 +872,7 @@ impl Vault {
         slot: u32,
         tx: Hash32,
         hints: Hints,
+        caller: &str,
     ) -> Out {
         let chain = self.config.chain.clone();
         let req = self.next_req + 1;
@@ -855,10 +883,16 @@ impl Vault {
         if s.status != SlotStatus::Open && !reconciling {
             return Err(Reject::WrongState("slot not open".into()));
         }
-        if s.verifying.is_some() {
-            return Err(Reject::WrongState("verify in flight".into()));
+        if s.verifying.iter().any(|v| v.caller == caller) {
+            return Err(Reject::WrongState("your verify is in flight".into()));
         }
-        if now < s.cooldown_until_ms {
+        if s.verifying.len() >= MAX_VERIFIES_IN_FLIGHT {
+            return Err(Reject::Busy);
+        }
+        if s.cooldowns
+            .iter()
+            .any(|(c, until)| c == caller && now < *until)
+        {
             return Err(Reject::Cooldown);
         }
         let has = |d: &Option<Draft>| {
@@ -885,11 +919,12 @@ impl Vault {
             &hints,
             log.as_ref(),
         ));
-        s.verifying = Some(Verifying {
+        s.verifying.push(Verifying {
             req,
             which,
             tx,
             expected,
+            caller: caller.to_string(),
         });
         self.next_req = req;
         Ok(vec![Effect::Verify {
@@ -916,17 +951,29 @@ impl Vault {
     ) -> Out {
         let o = self.op_mut(op).ok_or(Reject::NoSuchOp)?;
         let s = o.slots.get_mut(slot as usize).ok_or(Reject::NoSuchOp)?;
-        let Some(v) = s.verifying.clone() else {
-            return Err(Reject::WrongState("no verify in flight".into()));
+        let Some(pos) = s.verifying.iter().position(|v| v.req == req) else {
+            return Err(Reject::WrongState("no such verify in flight".into()));
         };
-        if v.req != req {
-            return Err(Reject::WrongState("stale verify callback".into()));
-        }
-        s.verifying = None;
+        let v = s.verifying.remove(pos);
         if !ok {
-            s.cooldown_until_ms = now + VERIFY_COOLDOWN_MS;
+            s.cooldowns
+                .retain(|(c, until)| *until > now && *c != v.caller);
+            if s.cooldowns.len() >= 16 {
+                s.cooldowns.remove(0);
+            }
+            s.cooldowns
+                .push((v.caller.clone(), now + VERIFY_COOLDOWN_MS));
             return Ok(vec![event(
                 "not_attested",
+                format!(r#"{{"op":{op},"slot":{slot}}}"#),
+            )]);
+        }
+        let open = s.status == SlotStatus::Open;
+        let reconciling = matches!(s.status, SlotStatus::Reverted { .. }) && v.which == Which::Main;
+        if !open && !reconciling {
+            // Another request already closed this slot.
+            return Ok(vec![event(
+                "already_settled",
                 format!(r#"{{"op":{op},"slot":{slot}}}"#),
             )]);
         }
@@ -1226,7 +1273,7 @@ impl Vault {
         let o = self.op_mut(id).ok_or(Reject::NoSuchOp)?;
         let cursor = o.cursor;
         let s = &mut o.slots[cursor as usize];
-        if s.status != SlotStatus::Open || s.verifying.is_some() || s.signing.is_some() {
+        if s.status != SlotStatus::Open || !s.verifying.is_empty() || s.signing.is_some() {
             return Err(Reject::WrongState("slot busy or closed".into()));
         }
         s.status = if landed {
@@ -1255,18 +1302,24 @@ impl Vault {
         hints: Hints,
         from: EvmAddr,
         amount: u128,
+        caller: &str,
     ) -> Out {
         let c = &self.config.chain;
         if from == c.vault || from == c.pool || from == c.atoken || from.0 == [0u8; 20] {
             return Err(Reject::BadCreditSender);
         }
-        if amount == 0 {
-            return Err(Reject::ZeroAmount);
+        if amount < MIN_CREDIT {
+            return Err(Reject::BelowMinCredit);
         }
-        if self
-            .credits
-            .iter()
-            .any(|(t, i)| *t == tx && *i == hints.log_index)
+        if hints.block_number <= self.credit_floor_block {
+            return Err(Reject::TooOld);
+        }
+        let same = |t: &Hash32, i: u64| *t == tx && i == hints.log_index;
+        if self.credits.iter().any(|(t, i, _)| same(t, *i))
+            || self
+                .pending_credits
+                .iter()
+                .any(|p| same(&p.tx, p.log_index))
         {
             return Err(Reject::AlreadyConsumed);
         }
@@ -1282,18 +1335,23 @@ impl Vault {
         if ours {
             return Err(Reject::BadCreditSender);
         }
-        if self.pending_credit.is_some() {
+        if self.pending_credits.iter().any(|p| p.caller == caller) {
+            return Err(Reject::WrongState("your credit is in flight".into()));
+        }
+        if self.pending_credits.len() >= MAX_VERIFIES_IN_FLIGHT {
             return Err(Reject::Busy);
         }
         let log = foreign::inbound_transfer_log(c, &from.0, amount);
         let expected = Hash32(foreign::expected_payload_hash(h, &tx.0, &hints, Some(&log)));
         let req = self.req();
-        self.pending_credit = Some(PendingCredit {
+        self.pending_credits.push(PendingCredit {
             req,
             tx,
             log_index: hints.log_index,
             amount,
             expected,
+            block_number: hints.block_number,
+            caller: caller.to_string(),
         });
         Ok(vec![Effect::VerifyCredit {
             req,
@@ -1304,23 +1362,24 @@ impl Vault {
     }
 
     pub fn on_credit_verified(&mut self, req: u64, ok: bool) -> Out {
-        let Some(p) = self.pending_credit.clone() else {
-            return Err(Reject::WrongState("no credit in flight".into()));
+        let Some(pos) = self.pending_credits.iter().position(|p| p.req == req) else {
+            return Err(Reject::WrongState("no such credit in flight".into()));
         };
-        if p.req != req {
-            return Err(Reject::WrongState("stale credit callback".into()));
-        }
-        self.pending_credit = None;
+        let p = self.pending_credits.remove(pos);
         if !ok {
             return Ok(vec![event(
                 "credit_not_attested",
                 format!(r#"{{"tx":"{}"}}"#, crate::types::hex0x(&p.tx.0)),
             )]);
         }
-        if self.credits.len() >= MAX_CREDITS_KEPT {
-            self.credits.remove(0);
+        if p.block_number <= self.credit_floor_block {
+            return Ok(vec![event("credit_too_old", "{}".into())]);
         }
-        self.credits.push((p.tx, p.log_index));
+        if self.credits.len() >= MAX_CREDITS_KEPT {
+            let (_, _, evicted_block) = self.credits.remove(0);
+            self.credit_floor_block = self.credit_floor_block.max(evicted_block);
+        }
+        self.credits.push((p.tx, p.log_index, p.block_number));
         self.ledger.idle += p.amount;
         self.ledger.total_credited += p.amount;
         Ok(vec![event(
@@ -1480,6 +1539,12 @@ impl Vault {
             ParkedKind::Policy { policy } => {
                 policy::validate(&policy, &self.config.floors)
                     .map_err(|e| Reject::PolicyInvalid(format!("{e:?}")))?;
+                // The policy may have changed while this item waited (e.g. a guardian tightened a
+                // field). Applying it must not loosen anything beyond the lane it waited for.
+                if policy::classify(&self.policy, &policy) > p.lane {
+                    self.parked[idx].status = ParkedStatus::Expired;
+                    return Err(Reject::StaleParked);
+                }
                 self.policy = policy;
                 vec![event("policy_changed", format!(r#"{{"parked":{id}}}"#))]
             }
@@ -1514,13 +1579,18 @@ impl Vault {
     /// The contract calls this with `sha256(code)` before deploying an upgrade.
     pub fn take_upgrade(&mut self, code_hash: Hash32) -> Out {
         match self.upgrade_ready {
-            Some(h) if h == code_hash => {
-                self.upgrade_ready = None;
-                Ok(vec![event("upgrading", "{}".into())])
-            }
+            // Cleared by `finish_upgrade` from the new code's `migrate`, so a failed migrate does
+            // not consume the DAO's approval.
+            Some(h) if h == code_hash => Ok(vec![event("upgrading", "{}".into())]),
             Some(_) => Err(Reject::CodeHashMismatch),
             None => Err(Reject::NotYetUnlocked),
         }
+    }
+
+    /// Called by the new code's `migrate` once the upgrade is in place.
+    pub fn finish_upgrade(&mut self) {
+        self.upgrade_ready = None;
+        self.version = STATE_VERSION;
     }
 
     fn require_guardian(&self, g: &str) -> Result<(), Reject> {

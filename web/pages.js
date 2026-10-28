@@ -120,7 +120,7 @@ export function waitingFor(op, wait) {
   const slot = op.slots[op.cursor];
   if (!slot) return "";
   if (slot.signing) return "the NEAR MPC network's signature";
-  if (slot.verifying) return "the NEAR MPC network's attestation that the transaction landed";
+  if (slot.verifying?.length) return "the NEAR MPC network's attestation that the transaction landed";
   if (slot.status === "unreserved" || (slot.sign_unknown && !slot.main?.signed?.length)) return "a keeper to call advance (reserve the nonce and request the signature)";
   if (!wait) return "a keeper to broadcast, wait for the Base safe head and settle";
   if (wait.stage === "broadcast") return "a keeper to broadcast the signed transaction to Base";
@@ -146,7 +146,7 @@ export function ops(d, wait) {
     const drafts = [["main", sl.main], ["cancel", sl.cancel], ["probe", sl.probe]].filter(([, x]) => x);
     return `<div class="slot"><b>${i + 1}. ${esc(slotName(sl.call))}</b>${sl.call.amount !== undefined ? ` ${esc(usdc(sl.call.amount))}` : ""}
       ${slotStatus(sl.status)} ${landed ? pill("attested by the MPC network", "ok") : ""} ${cur ? pill("current step", "info") : ""}
-      ${sl.signing ? pill("MPC is signing", "info") : ""} ${sl.verifying ? pill("MPC is verifying", "info") : ""}
+      ${sl.signing ? pill("MPC is signing", "info") : ""} ${sl.verifying?.length ? pill(`MPC is verifying (${sl.verifying.length})`, "info") : ""}
       ${drafts.map(([w, x]) => `<span class="small muted">${esc(w)}: nonce ${esc(x.params.nonce)}${x.signed.length ? ", " + x.signed.map((t) => a(links.baseTx(t.hash), short(t.hash, 10, 6), "mono")).join(" ") : ", not signed yet"}</span>`).join(" ")}
       ${landed ? `<span class="small muted">proved by ${a(links.baseTx(sl.status.landed.tx), short(sl.status.landed.tx, 10, 6), "mono")}</span>` : ""}
     </div>`;

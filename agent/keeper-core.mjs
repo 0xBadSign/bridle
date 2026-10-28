@@ -3,6 +3,7 @@
 //   io.view(contract, method, args?)            -> parsed JSON of a NEAR view call
 //   io.call(vault, method, args)                -> { hash, value, events } of a NEAR function call
 //   io.baseRpc(method, params)                  -> the raw JSON-RPC reply from Base
+//   io.me                                       -> the NEAR account id this keeper calls from
 //   io.pollMs (optional)                         -> wait between receipt polls (default 2000)
 // Deadlines and cooldowns use the chain's clock (`get_state().now_ms`), not the local one.
 //
@@ -75,7 +76,10 @@ export class KeeperCore {
     const si = op.cursor;
     const slot = op.slots[si];
     if (slot.signing) return "waiting for MPC signature";
-    if (slot.verifying) return "waiting for MPC attestation";
+    // Up to 4 verify requests may be in flight per slot, one per caller; cooldowns are per caller.
+    const inflight = slot.verifying || [];
+    if (inflight.some((v) => v.caller === this.io.me)) return "waiting for MPC attestation";
+    if (inflight.length >= 4) return "waiting for MPC attestations (requests from others in flight)";
     if (slot.status === "unreserved" || (slot.sign_unknown && !(slot.main?.signed?.length))) {
       const r = await this.call("advance", {});
       return `advance -> ${JSON.stringify(r.value)}`;
@@ -90,7 +94,8 @@ export class KeeperCore {
           continue;
         }
         if (parseInt(rc.blockNumber, 16) > safe) return `${which} ${s.hash.slice(0, 10)} mined, waiting for safe head`;
-        if (st.now_ms < slot.cooldown_until_ms) return "verify cooldown";
+        const cd = (slot.cooldowns || []).find(([c]) => c === this.io.me);
+        if (cd && st.now_ms < cd[1]) return "verify cooldown";
         if (which === "main" && rc.status !== "0x1") {
           // Reverted: the MPC will never attest it. After the deadline anyone may probe the next nonce.
           if (st.now_ms > slot.reserved_at_ms + st.policy.settle_deadline_ms && !slot.probe) {

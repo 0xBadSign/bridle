@@ -63,7 +63,7 @@ async function waitState(d) {
   if (st.active === null || st.active === undefined) return null;
   const op = d.ops.find((o) => o.id === st.active);
   const slot = op && op.slots[op.cursor];
-  if (!slot || slot.signing || slot.verifying || !slot.main?.signed?.length) return null;
+  if (!slot || slot.signing || slot.verifying?.length || !slot.main?.signed?.length) return null;
   try {
     const t = slot.main.signed[0].hash;
     const [rc, safe] = await Promise.all([baseRpc("eth_getTransactionReceipt", [t]), baseRpc("eth_getBlockByNumber", ["safe", false])]);
@@ -71,7 +71,6 @@ async function waitState(d) {
     const block = parseInt(rc.result.blockNumber, 16);
     const safeN = parseInt(safe.result.number, 16);
     if (block > safeN) return { stage: "safe", block, safe: safeN };
-    if (Date.now() < slot.cooldown_until_ms) return { stage: "cooldown" };
     return { stage: "settle" };
   } catch {
     return null;

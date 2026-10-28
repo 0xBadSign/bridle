@@ -9,6 +9,7 @@
 pub mod evm;
 pub mod exposure;
 pub mod foreign;
+pub mod legacy;
 pub mod machine;
 pub mod policy;
 pub mod types;

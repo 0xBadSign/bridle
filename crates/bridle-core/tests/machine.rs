@@ -20,6 +20,7 @@ impl Hasher for TH {
 }
 
 const MIN: u64 = 60_000;
+const U: u128 = 1_000_000;
 const G1: &str = "ed25519:guardian1";
 const G2: &str = "ed25519:guardian2";
 
@@ -181,7 +182,9 @@ impl World {
     fn settle(&mut self, tx: Hash32, ok: bool) -> Result<(), Reject> {
         let id = self.v.active.ok_or(Reject::NoSuchOp)?;
         let cursor = self.v.op(id).unwrap().cursor;
-        let r = self.v.settle(&TH, self.now, id, cursor, tx, Self::hints());
+        let r = self
+            .v
+            .settle(&TH, self.now, id, cursor, tx, Self::hints(), "keeper");
         self.run(r)?;
         let (op, slot, req) = self.pending_verify.remove(0);
         let r = self.v.on_verified(&TH, self.now, op, slot, req, ok);
@@ -191,9 +194,14 @@ impl World {
     fn credit(&mut self, amount: u128) {
         self.counter += 1;
         let tx = Hash32(TH.keccak256(&self.counter.to_le_bytes()));
-        let r = self
-            .v
-            .credit_deposit(&TH, tx, Self::hints(), EvmAddr([0x55; 20]), amount);
+        let r = self.v.credit_deposit(
+            &TH,
+            tx,
+            Self::hints(),
+            EvmAddr([0x55; 20]),
+            amount,
+            "keeper",
+        );
         self.run(r).unwrap();
         let req = self.pending_credit.remove(0);
         let r = self.v.on_credit_verified(req, true);
@@ -498,7 +506,7 @@ fn sign_timeout_keeps_the_nonce_and_retries_f3() {
     w.credit(100_000_000);
     let r = w.v.agent_act(&TH, w.now, Action::Withdraw { amount: 0 });
     assert_eq!(r, Err(Reject::ZeroAmount));
-    let r = w.v.agent_act(&TH, w.now, Action::Supply { amount: 50 });
+    let r = w.v.agent_act(&TH, w.now, Action::Supply { amount: 50 * U });
     w.run(r).unwrap();
     w.sign_timeout();
     let op = w.v.active.unwrap();
@@ -511,7 +519,7 @@ fn sign_timeout_keeps_the_nonce_and_retries_f3() {
     let tx = w.sign_ok();
     w.settle(tx, true).unwrap();
     w.finish();
-    assert_eq!(w.v.ledger.principal, 50);
+    assert_eq!(w.v.ledger.principal, 50 * U);
     // The same nonce never carried two different main payloads.
     let mut seen = std::collections::BTreeMap::new();
     for (n, which, p) in &w.signed_log {
@@ -524,8 +532,8 @@ fn sign_timeout_keeps_the_nonce_and_retries_f3() {
 #[test]
 fn adopted_late_signature_can_settle() {
     let mut w = World::new();
-    w.credit(100);
-    let r = w.v.agent_act(&TH, w.now, Action::Supply { amount: 50 });
+    w.credit(100 * U);
+    let r = w.v.agent_act(&TH, w.now, Action::Supply { amount: 50 * U });
     w.run(r).unwrap();
     w.sign_timeout();
     let op = w.v.active.unwrap();
@@ -542,13 +550,17 @@ fn adopted_late_signature_can_settle() {
 #[test]
 fn failed_verifies_never_freeze_before_the_deadline_f4() {
     let mut w = World::new();
-    w.credit(100);
-    let r = w.v.agent_act(&TH, w.now, Action::Supply { amount: 50 });
+    w.credit(100 * U);
+    let r = w.v.agent_act(&TH, w.now, Action::Supply { amount: 50 * U });
     w.run(r).unwrap();
     let tx = w.sign_ok();
     for _ in 0..20 {
         w.settle(tx, false).unwrap();
-        assert_eq!(w.settle(tx, false), Err(Reject::Cooldown));
+        let id = w.v.active.unwrap();
+        assert_eq!(
+            w.v.settle(&TH, w.now, id, 0, tx, World::hints(), "keeper"),
+            Err(Reject::Cooldown)
+        );
         w.now += VERIFY_COOLDOWN_MS;
         assert!(
             !w.v.frozen(w.now)
@@ -571,14 +583,22 @@ fn failed_verifies_never_freeze_before_the_deadline_f4() {
 #[test]
 fn unknown_or_foreign_tx_cannot_settle() {
     let mut w = World::new();
-    w.credit(100);
-    let r = w.v.agent_act(&TH, w.now, Action::Supply { amount: 50 });
+    w.credit(100 * U);
+    let r = w.v.agent_act(&TH, w.now, Action::Supply { amount: 50 * U });
     w.run(r).unwrap();
     w.sign_ok();
     let op = w.v.active.unwrap();
     // Someone else's supply(onBehalfOf = D): not one of the vault's signed hashes.
     assert_eq!(
-        w.v.settle(&TH, w.now, op, 0, Hash32([0xee; 32]), World::hints()),
+        w.v.settle(
+            &TH,
+            w.now,
+            op,
+            0,
+            Hash32([0xee; 32]),
+            World::hints(),
+            "keeper"
+        ),
         Err(Reject::UnknownTx)
     );
 }
@@ -586,8 +606,8 @@ fn unknown_or_foreign_tx_cannot_settle() {
 #[test]
 fn stale_or_spoofed_callbacks_do_nothing_t11() {
     let mut w = World::new();
-    w.credit(100);
-    let r = w.v.agent_act(&TH, w.now, Action::Supply { amount: 50 });
+    w.credit(100 * U);
+    let r = w.v.agent_act(&TH, w.now, Action::Supply { amount: 50 * U });
     w.run(r).unwrap();
     let before = w.v.clone();
     // Wrong request nonce, wrong op, wrong slot, no request in flight.
@@ -613,8 +633,8 @@ fn stale_or_spoofed_callbacks_do_nothing_t11() {
 #[test]
 fn cancel_releases_reservations() {
     let mut w = World::new();
-    w.credit(100);
-    let r = w.v.agent_act(&TH, w.now, Action::Supply { amount: 50 });
+    w.credit(100 * U);
+    let r = w.v.agent_act(&TH, w.now, Action::Supply { amount: 50 * U });
     w.run(r).unwrap();
     w.sign_ok();
     assert_eq!(
@@ -626,7 +646,7 @@ fn cancel_releases_reservations() {
     let c = w.sign_ok();
     w.settle(c, true).unwrap();
     assert!(w.v.active.is_none());
-    assert_eq!(w.v.ledger.idle, 100);
+    assert_eq!(w.v.ledger.idle, 100 * U);
     assert_eq!(w.v.ledger.supplying, 0);
     assert_eq!(w.v.op(0).unwrap().status, OpStatus::Aborted);
     // The cancel reused the approve's nonce with fees raised on both fields.
@@ -647,8 +667,8 @@ fn cancel_releases_reservations() {
 #[test]
 fn failed_supply_after_approve_resets_allowance() {
     let mut w = World::new();
-    w.credit(100);
-    let r = w.v.agent_act(&TH, w.now, Action::Supply { amount: 50 });
+    w.credit(100 * U);
+    let r = w.v.agent_act(&TH, w.now, Action::Supply { amount: 50 * U });
     w.run(r).unwrap();
     let a = w.sign_ok();
     w.settle(a, true).unwrap(); // approve landed
@@ -667,15 +687,15 @@ fn failed_supply_after_approve_resets_allowance() {
     );
     w.finish();
     assert_eq!(w.v.op(0).unwrap().status, OpStatus::Aborted);
-    assert_eq!(w.v.ledger.idle, 100);
+    assert_eq!(w.v.ledger.idle, 100 * U);
 }
 
 #[test]
 fn reverted_tx_resolved_by_probe_then_reconciled() {
     let mut w = World::new();
-    w.credit(100);
+    w.credit(100 * U);
     let r =
-        w.v.dao_act(&TH, w.now, Action::SendToTreasury { amount: 40 });
+        w.v.dao_act(&TH, w.now, Action::SendToTreasury { amount: 15 * U });
     w.run(r).unwrap();
     let main = w.sign_ok();
     assert_eq!(w.v.probe(&TH, w.now), Err(Reject::BeforeDeadline));
@@ -691,28 +711,29 @@ fn reverted_tx_resolved_by_probe_then_reconciled() {
     );
     w.settle(p, true).unwrap();
     assert!(w.v.active.is_none());
-    assert_eq!(w.v.ledger.idle, 100, "treated as reverted, released");
+    assert_eq!(w.v.ledger.idle, 100 * U, "treated as reverted, released");
     // A late proof that the transfer did land reconciles upward.
-    let r = w.v.settle(&TH, w.now + MIN, 0, 0, main, World::hints());
+    let r =
+        w.v.settle(&TH, w.now + MIN, 0, 0, main, World::hints(), "keeper");
     w.run(r).unwrap();
     let (op, slot, req) = w.pending_verify.remove(0);
     let r = w.v.on_verified(&TH, w.now, op, slot, req, true);
     w.run(r).unwrap();
-    assert_eq!(w.v.ledger.idle, 60);
-    assert_eq!(w.v.ledger.total_sent, 40);
+    assert_eq!(w.v.ledger.idle, 85 * U);
+    assert_eq!(w.v.ledger.total_sent, 15 * U);
 }
 
 #[test]
 fn dao_resolve_is_the_trusted_fallback() {
     let mut w = World::new();
-    w.credit(100);
-    let r = w.v.agent_act(&TH, w.now, Action::Supply { amount: 50 });
+    w.credit(100 * U);
+    let r = w.v.agent_act(&TH, w.now, Action::Supply { amount: 50 * U });
     w.run(r).unwrap();
     w.sign_ok();
     let r = w.v.dao_resolve(&TH, w.now, false);
     w.run(r).unwrap();
     assert!(w.v.active.is_none());
-    assert_eq!(w.v.ledger.idle, 100);
+    assert_eq!(w.v.ledger.idle, 100 * U);
 }
 
 #[test]
@@ -722,20 +743,20 @@ fn deposits_credit_once_and_never_from_the_pool_or_atoken() {
     let c = chain();
     for bad in [c.pool, c.atoken, c.vault] {
         assert_eq!(
-            w.v.credit_deposit(&TH, tx, World::hints(), bad, 5),
+            w.v.credit_deposit(&TH, tx, World::hints(), bad, 5 * U, "keeper"),
             Err(Reject::BadCreditSender)
         );
     }
     let r =
-        w.v.credit_deposit(&TH, tx, World::hints(), EvmAddr([5; 20]), 5);
+        w.v.credit_deposit(&TH, tx, World::hints(), EvmAddr([5; 20]), 5 * U, "keeper");
     w.run(r).unwrap();
     let req = w.pending_credit.remove(0);
     w.v.on_credit_verified(req, true).unwrap();
     assert_eq!(
-        w.v.credit_deposit(&TH, tx, World::hints(), EvmAddr([5; 20]), 5),
+        w.v.credit_deposit(&TH, tx, World::hints(), EvmAddr([5; 20]), 5 * U, "keeper"),
         Err(Reject::AlreadyConsumed)
     );
-    assert_eq!(w.v.ledger.idle, 5);
+    assert_eq!(w.v.ledger.idle, 5 * U);
 }
 
 #[test]
@@ -755,19 +776,8 @@ fn upgrade_waits_and_needs_the_exact_code_hash() {
 #[test]
 fn guardian_unwind_only_returns_to_the_vault_address() {
     let mut w = World::new();
-    w.credit(100);
-    let r = w.v.agent_act(&TH, w.now, Action::Supply { amount: 80 });
-    w.run(r).unwrap();
-    w.finish();
-    assert_eq!(
-        w.v.guardian_unwind(&TH, w.now, G1),
-        Err(Reject::ZeroAmount),
-        "below the dust nothing is worth unwinding"
-    );
-    w.credit(10_000_000);
-    w.now += MIN;
-    let r =
-        w.v.agent_act(&TH, w.now, Action::Supply { amount: 10_000_000 });
+    w.credit(100 * U);
+    let r = w.v.agent_act(&TH, w.now, Action::Supply { amount: 80 * U });
     w.run(r).unwrap();
     w.finish();
     let r = w.v.guardian_unwind(&TH, w.now, G1);
@@ -777,13 +787,108 @@ fn guardian_unwind_only_returns_to_the_vault_address() {
     assert_eq!(
         w.v.op(op).unwrap().slots[0].call,
         Call::Withdraw {
-            amount: 10_000_080 - UNWIND_DUST
+            amount: 80 * U - UNWIND_DUST
         }
     );
     w.finish();
     assert_eq!(w.v.ledger.principal, UNWIND_DUST);
-    assert_eq!(w.v.ledger.idle + w.v.ledger.principal, 10_000_100);
+    assert_eq!(w.v.ledger.idle + w.v.ledger.principal, 100 * U);
+    assert_eq!(
+        w.v.guardian_unwind(&TH, w.now, G1),
+        Err(Reject::ZeroAmount),
+        "only dust is left"
+    );
     assert_eq!(w.v.ledger.total_sent, 0, "nothing left D");
+}
+
+#[test]
+fn dust_deposits_are_ignored_and_evicted_proofs_cannot_be_replayed_2a() {
+    let mut w = World::new();
+    let h = |n: u64, block: u64| {
+        (
+            Hash32([n as u8; 32]),
+            Hints {
+                block_hash: Hash32([9; 32]),
+                block_number: block,
+                tx_index: 0,
+                log_index: n,
+            },
+        )
+    };
+    let (tx, hints) = h(1, 10);
+    assert_eq!(
+        w.v.credit_deposit(&TH, tx, hints, EvmAddr([5; 20]), MIN_CREDIT - 1, "k"),
+        Err(Reject::BelowMinCredit)
+    );
+    // Fill the consumed window: the oldest proof (block 10) is evicted and raises the floor.
+    for i in 0..(MAX_CREDITS_KEPT as u64 + 1) {
+        let (_, hints) = h(i % 250, 10 + i);
+        let tx = Hash32(TH.keccak256(&i.to_le_bytes()));
+        let r =
+            w.v.credit_deposit(&TH, tx, hints, EvmAddr([5; 20]), MIN_CREDIT, "k");
+        w.run(r).unwrap();
+        let req = w.pending_credit.remove(0);
+        w.v.on_credit_verified(req, true).unwrap();
+    }
+    assert_eq!(w.v.credits.len(), MAX_CREDITS_KEPT);
+    assert_eq!(w.v.credit_floor_block, 10);
+    // Replaying the evicted first deposit is refused: its block is at the floor.
+    let first = Hash32(TH.keccak256(&0u64.to_le_bytes()));
+    let (_, hints) = h(0, 10);
+    assert_eq!(
+        w.v.credit_deposit(&TH, first, hints, EvmAddr([5; 20]), MIN_CREDIT, "k"),
+        Err(Reject::TooOld)
+    );
+}
+
+#[test]
+fn one_caller_cannot_block_settlement_2b() {
+    let mut w = World::new();
+    w.credit(100 * U);
+    let r = w.v.agent_act(&TH, w.now, Action::Supply { amount: 50 * U });
+    w.run(r).unwrap();
+    let tx = w.sign_ok();
+    let id = w.v.active.unwrap();
+    // The attacker holds a verify in flight with garbage hints...
+    let bad = Hints {
+        block_hash: Hash32([1; 32]),
+        block_number: 7,
+        tx_index: 7,
+        log_index: 7,
+    };
+    let r = w.v.settle(&TH, w.now, id, 0, tx, bad, "attacker");
+    w.run(r).unwrap();
+    assert!(
+        w.v.settle(&TH, w.now, id, 0, tx, bad, "attacker").is_err(),
+        "one in flight per caller"
+    );
+    // ...and an honest keeper still gets through.
+    let r = w.v.settle(&TH, w.now, id, 0, tx, World::hints(), "keeper");
+    w.run(r).unwrap();
+    let (op, slot, req) = w.pending_verify.remove(1);
+    w.v.on_verified(&TH, w.now, op, slot, req, true).unwrap();
+    assert_eq!(w.v.op(id).unwrap().cursor, 1, "approve landed");
+    // The attacker's late failure only cools the attacker down.
+    let (op, slot, req) = w.pending_verify.remove(0);
+    w.v.on_verified(&TH, w.now, op, slot, req, false).unwrap();
+}
+
+#[test]
+fn stale_parked_policy_cannot_undo_a_guardian_tightening_2c() {
+    let mut w = World::new();
+    let mut looser = pol();
+    looser.agent_quota_per_epoch += 1; // short lane
+    w.v.propose_policy(w.now, looser).unwrap();
+    let mut tight = pol();
+    tight.supply_cap = 1; // guardian emergency tightening (long-lane field)
+    tight.agent_max_per_action = 1;
+    w.v.guardian_tighten(G1, tight).unwrap();
+    // The parked item would now also raise supply_cap back: that needs the long lane.
+    assert_eq!(
+        w.v.execute(&TH, w.now + 4 * MIN, 0),
+        Err(Reject::StaleParked)
+    );
+    assert_eq!(w.v.policy.supply_cap, 1);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -826,7 +931,7 @@ fn step() -> impl Strategy<Value = Step> {
         (0u64..40).prop_map(|m| Step::Tick(m * MIN)),
         Just(Step::Pause),
         (0u128..1_000_000_000).prop_map(Step::Tighten),
-        (1u128..300_000_000).prop_map(Step::Credit),
+        (MIN_CREDIT..300_000_000).prop_map(Step::Credit),
         (0u64..6).prop_map(Step::Execute),
         Just(Step::LateSettle),
     ]
@@ -884,7 +989,7 @@ proptest! {
                 Step::LateSettle => {
                     // Try to settle any earlier slot with any known hash (replay / late proofs).
                     if let Some(&(op, slot, h)) = signed_by_slot.first() {
-                        let r = w.v.settle(&TH, now, op, slot, h, World::hints());
+                        let r = w.v.settle(&TH, now, op, slot, h, World::hints(), "keeper");
                         if w.run(r).is_ok() {
                             let (o, sl, req) = w.pending_verify.pop().unwrap();
                             let r = w.v.on_verified(&TH, now, o, sl, req, true);

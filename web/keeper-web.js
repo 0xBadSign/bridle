@@ -11,6 +11,7 @@ export function createKeeper() {
   const io = {
     view,
     baseRpc,
+    me: PUBLIC_KEEPER_ACCOUNT,
     call: (vault, method, args) => {
       const run = async () => {
         caller ||= await makeCaller(PUBLIC_KEEPER_ACCOUNT, PUBLIC_KEEPER_KEY);

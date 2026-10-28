@@ -64,6 +64,17 @@ pub struct VerifyResp {
     pub signature: SigResp,
 }
 
+/// State layout of the first testnet deployment (state version 1), for `migrate`.
+#[derive(borsh::BorshDeserialize)]
+struct ContractV1 {
+    owner: AccountId,
+    signer: AccountId,
+    vault_pk: Vec<u8>,
+    foreign_pk: Vec<u8>,
+    key_allowance: NearToken,
+    vault: bridle_core::legacy::VaultV1,
+}
+
 #[near(contract_state)]
 #[derive(PanicOnDefault)]
 pub struct Contract {
@@ -95,8 +106,14 @@ fn log_event(name: &str, data: &str) {
 }
 
 fn uncompressed(hex_key: &str) -> Vec<u8> {
-    let raw =
-        hex::decode(hex_key.trim_start_matches("0x").trim_start_matches("04")).unwrap_or_default();
+    let h = hex_key.trim_start_matches("0x");
+    // Accept 64 bytes, or 65 bytes with the SEC1 0x04 prefix (strip exactly one).
+    let h = if h.len() == 130 && h.starts_with("04") {
+        &h[2..]
+    } else {
+        h
+    };
+    let raw = hex::decode(h).unwrap_or_default();
     if raw.len() != 64 {
         env::panic_str("public keys must be 64-byte uncompressed secp256k1 (hex)");
     }
@@ -116,8 +133,9 @@ fn recover(hash: &[u8; 32], big_r: &str, s: &str, v: u8) -> Option<[u8; 64]> {
 
 #[near]
 impl Contract {
-    /// Deployed and initialised in one batch transaction that also deletes the deployer key
-    /// (`scripts/deploy.mjs`), so the account never holds a full-access key afterwards.
+    /// Created, deployed and initialised in one batch transaction by the parent account
+    /// (`scripts/deploy.mjs`). The sub-account is created without any key, so it never holds a
+    /// full-access key; `new` adds only the agent and guardian function-call keys.
     #[init]
     #[allow(clippy::too_many_arguments)]
     pub fn new(
@@ -466,7 +484,10 @@ impl Contract {
         if let Some(v) = self.need_gas(&c, "settle") {
             return v;
         }
-        let out = self.vault.settle(&NearHasher, now(), op, slot, tx, hints);
+        let who = env::predecessor_account_id().to_string();
+        let out = self
+            .vault
+            .settle(&NearHasher, now(), op, slot, tx, hints, &who);
         self.finish(c, "settle", out)
     }
 
@@ -510,9 +531,10 @@ impl Contract {
         if let Some(v) = self.need_gas(&c, "credit_deposit") {
             return v;
         }
+        let who = env::predecessor_account_id().to_string();
         let out = self
             .vault
-            .credit_deposit(&NearHasher, tx, hints, from, amount.0);
+            .credit_deposit(&NearHasher, tx, hints, from, amount.0, &who);
         self.finish(c, "credit_deposit", out)
     }
 
@@ -553,7 +575,23 @@ impl Contract {
     #[private]
     #[init(ignore_state)]
     pub fn migrate() -> Self {
-        let old: Contract = env::state_read().unwrap_or_else(|| env::panic_str("no state"));
+        // Read the stored state in the current layout, or convert it from an older one.
+        let raw = env::storage_read(b"STATE").unwrap_or_else(|| env::panic_str("no state"));
+        let mut old: Contract = match borsh::from_slice::<Contract>(&raw) {
+            Ok(c) => c,
+            Err(_) => match borsh::from_slice::<ContractV1>(&raw) {
+                Ok(v1) => Contract {
+                    owner: v1.owner,
+                    signer: v1.signer,
+                    vault_pk: v1.vault_pk,
+                    foreign_pk: v1.foreign_pk,
+                    key_allowance: v1.key_allowance,
+                    vault: v1.vault.into(),
+                },
+                Err(_) => env::panic_str("unknown state layout"),
+            },
+        };
+        old.vault.finish_upgrade();
         let b = self_batch();
         if let Some(a) = old
             .vault
@@ -578,7 +616,8 @@ impl Contract {
     }
 
     // -----------------------------------------------------------------------------------------
-    // MPC callbacks. They take ids only; every external fact comes from the promise result.
+    // MPC callbacks. They take ids (plus the expected hash the vault itself computed); every
+    // external fact comes from the promise result.
 
     fn check_signature(
         &self,
@@ -711,6 +750,8 @@ impl Contract {
             "paused_until_ms": v.paused_until_ms,
             "rejection_count": v.rejection_count,
             "upgrade_ready": v.upgrade_ready,
+            "state_version": v.version,
+            "credit_floor_block": v.credit_floor_block,
             "now_ms": t,
         })
     }

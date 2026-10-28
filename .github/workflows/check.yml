@@ -1,0 +1,21 @@
+name: check
+on: [push, pull_request]
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+          components: rustfmt, clippy
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install cargo-near
+        run: cargo install cargo-near --version 0.22.0 --locked --no-default-features
+      - run: npm ci
+      - name: Quality gate (fmt, clippy, tests, contract builds, wasm import check, English only, no secrets)
+        run: bash scripts/check.sh
+      - name: Offline demo (local NEAR sandbox, mock MPC signer, mock Base)
+        run: node scripts/demo.mjs

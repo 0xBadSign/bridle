@@ -167,7 +167,7 @@ const steps = {
     const r = await call(guardian(1), V, "guardian_unwind", {}, { gasT: 150 });
     await drain();
     const after = (await state()).ledger;
-    check("guardian unwind pulls all principal back to the vault address; nothing leaves it", r.value?.ok && after.principal === "0" && BigInt(after.idle) === BigInt(before.idle) + BigInt(before.principal) && after.total_sent === before.total_sent, `near ${r.hash}`);
+    check("guardian unwind pulls principal (minus 100 base units of dust) back to the vault address; nothing leaves it", r.value?.ok && BigInt(after.principal) <= 100n && BigInt(after.idle) + BigInt(after.principal) === BigInt(before.idle) + BigInt(before.principal) && after.total_sent === before.total_sent, `near ${r.hash}`);
   },
 
   async final() {

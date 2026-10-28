@@ -15,7 +15,7 @@ export class Keeper extends KeeperCore {
    */
   constructor(vault, signerAccount, { gasT = 150, keyFile, rpc = baseRpc, pollMs = 2000 } = {}) {
     const acct = typeof signerAccount === "string" ? account(signerAccount, keyFile || signerAccount) : signerAccount;
-    super(vault, { view, baseRpc: rpc, pollMs, call: (v, method, args) => call(acct, v, method, args, { gasT }) }, { onLog: (m) => log(m) });
+    super(vault, { view, baseRpc: rpc, pollMs, me: acct.accountId, call: (v, method, args) => call(acct, v, method, args, { gasT }) }, { onLog: (m) => log(m) });
     this.acct = acct;
   }
 

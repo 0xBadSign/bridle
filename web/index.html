@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bridle: an AI agent with a DAO's money and no key</title>
+<meta name="description" content="Live dashboard for Bridle, a NEAR vault that lets an AI agent operate a DAO's USDC on Base without holding any key.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23127a5a'/%3E%3Cpath d='M9 22V10h8a4 4 0 010 8h-8m0-4h9' stroke='white' stroke-width='3' fill='none'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="wrap bar">
+    <a class="brand" href="#overview">Bridle</a>
+    <label class="vsel">Vault
+      <select id="vault-select" aria-label="Vault">
+        <option value="main">Main vault (DAO)</option>
+        <option value="arena">Arena vault (play money)</option>
+      </select>
+    </label>
+    <nav id="nav" aria-label="Pages">
+      <a href="#overview" data-p="overview">Overview</a>
+      <a href="#ops" data-p="ops">Operations</a>
+      <a href="#parked" data-p="parked">Parked</a>
+      <a href="#rejections" data-p="rejections">Refusals</a>
+      <a href="#arena" data-p="arena">Arena</a>
+      <a href="#how" data-p="how">How it works</a>
+    </nav>
+  </div>
+</header>
+<main class="wrap">
+  <p class="tagline">Bridle gives an AI agent a DAO's money on Base without giving it any key: a NEAR contract builds every transaction, the NEAR MPC network signs it, and the same network proves it landed before the next one is allowed.</p>
+  <div id="banner" class="banner" hidden></div>
+  <section id="page"></section>
+</main>
+<footer class="wrap foot">
+  <span id="poll-note">Loading...</span>
+  <span id="keeper-note" hidden>Your browser is acting as the keeper for the arena vault.</span>
+  <span>Testnet only (NEAR testnet, Base Sepolia). No tracking, no cookies. <a href="https://testnet.nearblocks.io/address/vault.bridle-hq.testnet" rel="noopener">NEAR explorer</a> / <a href="https://sepolia.basescan.org/address/0x96fbd55e58c16b10df15532e9157e067f2d1d8aa" rel="noopener">Base explorer</a></span>
+</footer>
+<script type="module" src="app.js"></script>
+</body>
+</html>

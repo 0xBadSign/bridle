@@ -16,6 +16,14 @@ export function banner(d) {
   return null;
 }
 
+/** Breakdown of the recent refusals: agent requests vs. everyone else (keepers racing, outsiders). */
+function agentRefusals(d) {
+  const recent = d.rej?.recent || [];
+  if (!recent.length) return "";
+  const agent = recent.filter((r) => r.caller === "agent").length;
+  return esc(`Of the last ${recent.length}: ${agent} from the agent, ${recent.length - agent} from others (outsiders, keepers racing).`);
+}
+
 export function overview(d, key) {
   const s = d.state;
   const L = s.ledger;
@@ -30,7 +38,7 @@ export function overview(d, key) {
   return `
 <h1>${esc(v.label)}</h1>
 <div class="grid">
-  <div class="card stat"><div class="label">Requests refused on-chain</div><div class="big">${esc(s.rejection_count)}</div><div class="hint"><a href="#rejections">See every refusal</a></div></div>
+  <div class="card stat"><div class="label">Requests refused on-chain</div><div class="big">${esc(s.rejection_count)}</div><div class="hint">${agentRefusals(d)} <a href="#rejections">See every refusal</a></div></div>
   ${stat("Idle at the vault's Base address", esc(usdc(L.idle)), "Free to be supplied or sent")}
   ${stat("In Aave", esc(usdc(L.principal)), "Proved supplied")}
   ${stat("In flight", esc(usdc(inflight)), `Supplying ${usdc(L.supplying)}, withdrawing ${usdc(L.withdrawing)}, sending ${usdc(L.sending)}`)}

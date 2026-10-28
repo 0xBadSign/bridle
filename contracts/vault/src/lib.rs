@@ -13,7 +13,9 @@ use bridle_core::policy::{Floors, Policy};
 use bridle_core::types::{hex0x, parse_hex, EvmAddr, Hash32, Hasher, H256};
 use near_sdk::serde::Deserialize;
 use near_sdk::serde_json::{self, json, Value};
-use near_sdk::{env, near, AccountId, Allowance, Gas, NearToken, PanicOnDefault, PromiseError, PublicKey};
+use near_sdk::{
+    env, near, AccountId, Allowance, Gas, NearToken, PanicOnDefault, PromiseError, PublicKey,
+};
 
 const SIGN_PATH: &str = "bridle";
 const SIGN_DOMAIN: u32 = 0;
@@ -23,7 +25,8 @@ const GAS_CALLBACK: Gas = Gas::from_tgas(30);
 /// Prepaid gas a call must bring if it may reach the MPC (red-team N12: no underfunded callbacks).
 const GAS_NEEDED: Gas = Gas::from_tgas(100);
 const AGENT_METHODS: &str = "agent_act";
-const GUARDIAN_METHODS: &str = "guardian_pause,guardian_veto,guardian_tighten,guardian_unwind,cancel";
+const GUARDIAN_METHODS: &str =
+    "guardian_pause,guardian_veto,guardian_tighten,guardian_unwind,cancel";
 
 struct NearHasher;
 impl Hasher for NearHasher {
@@ -86,11 +89,14 @@ fn now() -> u64 {
 }
 
 fn log_event(name: &str, data: &str) {
-    env::log_str(&format!(r#"EVENT_JSON:{{"standard":"bridle","version":"1.0.0","event":"{name}","data":{data}}}"#));
+    env::log_str(&format!(
+        r#"EVENT_JSON:{{"standard":"bridle","version":"1.0.0","event":"{name}","data":{data}}}"#
+    ));
 }
 
 fn uncompressed(hex_key: &str) -> Vec<u8> {
-    let raw = hex::decode(hex_key.trim_start_matches("0x").trim_start_matches("04")).unwrap_or_default();
+    let raw =
+        hex::decode(hex_key.trim_start_matches("0x").trim_start_matches("04")).unwrap_or_default();
     if raw.len() != 64 {
         env::panic_str("public keys must be 64-byte uncompressed secp256k1 (hex)");
     }
@@ -99,7 +105,11 @@ fn uncompressed(hex_key: &str) -> Vec<u8> {
 
 /// Recover the signer of a 32-byte hash with low-s enforced.
 fn recover(hash: &[u8; 32], big_r: &str, s: &str, v: u8) -> Option<[u8; 64]> {
-    let sig = MpcSignature { big_r: big_r.to_string(), s: s.to_string(), recovery_id: v };
+    let sig = MpcSignature {
+        big_r: big_r.to_string(),
+        s: s.to_string(),
+        recovery_id: v,
+    };
     let rs = sig.rs()?;
     env::ecrecover(hash, &rs, v, true)
 }
@@ -141,7 +151,14 @@ impl Contract {
         for g in &guardian_keys {
             add_fc_key(b, g, key_allowance, GUARDIAN_METHODS);
         }
-        Self { owner, signer, vault_pk: uncompressed(&vault_pk), foreign_pk: uncompressed(&foreign_pk), key_allowance, vault }
+        Self {
+            owner,
+            signer,
+            vault_pk: uncompressed(&vault_pk),
+            foreign_pk: uncompressed(&foreign_pk),
+            key_allowance,
+            vault,
+        }
     }
 
     // -----------------------------------------------------------------------------------------
@@ -178,14 +195,21 @@ impl Contract {
 
     fn reject(&mut self, caller: Caller, method: &str, reason: Reject) -> Value {
         let r = serde_json::to_value(&reason).unwrap_or(Value::Null);
-        log_event("rejected", &json!({ "method": method, "caller": caller, "reason": r }).to_string());
+        log_event(
+            "rejected",
+            &json!({ "method": method, "caller": caller, "reason": r }).to_string(),
+        );
         self.vault.record_rejection(now(), caller, method, reason);
         json!({ "ok": false, "rejected": r })
     }
 
     fn need_gas(&mut self, caller: &Caller, method: &str) -> Option<Value> {
         if env::prepaid_gas() < GAS_NEEDED {
-            return Some(self.reject(caller.clone(), method, Reject::WrongState("attach at least 100 Tgas".into())));
+            return Some(self.reject(
+                caller.clone(),
+                method,
+                Reject::WrongState("attach at least 100 Tgas".into()),
+            ));
         }
         None
     }
@@ -193,20 +217,57 @@ impl Contract {
     fn run_effects(&mut self, fx: Vec<Effect>) {
         for e in fx {
             match e {
-                Effect::Sign { op, slot, which, req, payload } => {
+                Effect::Sign {
+                    op,
+                    slot,
+                    which,
+                    req,
+                    payload,
+                } => {
                     let args = foreign::sign_args_json(&payload.0, SIGN_PATH, SIGN_DOMAIN);
                     let cb = json!({ "op": op, "slot": slot, "which": which, "req": req });
                     mpc_then(&self.signer, "sign", args, "on_signed", cb);
                 }
-                Effect::Verify { op, slot, req, tx, log_index, expected, .. } => {
-                    let args = foreign::verify_args_json(&tx.0, log_index, &expected.0, FOREIGN_DOMAIN);
+                Effect::Verify {
+                    op,
+                    slot,
+                    req,
+                    tx,
+                    log_index,
+                    expected,
+                    ..
+                } => {
+                    let args =
+                        foreign::verify_args_json(&tx.0, log_index, &expected.0, FOREIGN_DOMAIN);
                     let cb = json!({ "op": op, "slot": slot, "req": req, "expected": expected });
-                    mpc_then(&self.signer, "verify_foreign_transaction", args, "on_verified", cb);
+                    mpc_then(
+                        &self.signer,
+                        "verify_foreign_transaction",
+                        args,
+                        "on_verified",
+                        cb,
+                    );
                 }
-                Effect::VerifyCredit { req, tx, log_index, expected } => {
-                    let args = foreign::verify_args_json(&tx.0, Some(log_index), &expected.0, FOREIGN_DOMAIN);
+                Effect::VerifyCredit {
+                    req,
+                    tx,
+                    log_index,
+                    expected,
+                } => {
+                    let args = foreign::verify_args_json(
+                        &tx.0,
+                        Some(log_index),
+                        &expected.0,
+                        FOREIGN_DOMAIN,
+                    );
                     let cb = json!({ "req": req, "expected": expected });
-                    mpc_then(&self.signer, "verify_foreign_transaction", args, "on_credit_verified", cb);
+                    mpc_then(
+                        &self.signer,
+                        "verify_foreign_transaction",
+                        args,
+                        "on_credit_verified",
+                        cb,
+                    );
                 }
                 Effect::AddGuardianKey { public_key } => {
                     if let Ok(pk) = public_key.parse::<PublicKey>() {
@@ -420,7 +481,15 @@ impl Contract {
     }
 
     /// Add a signature produced outside a callback (for example a late MPC response).
-    pub fn adopt_signature(&mut self, op: u64, slot: u32, which: Which, big_r: String, s: String, recovery_id: u8) -> Value {
+    pub fn adopt_signature(
+        &mut self,
+        op: u64,
+        slot: u32,
+        which: Which,
+        big_r: String,
+        s: String,
+        recovery_id: u8,
+    ) -> Value {
         let c = self.caller();
         let signed = self.check_signature(op, slot, which, &big_r, &s, recovery_id);
         let out = match signed {
@@ -430,12 +499,20 @@ impl Contract {
         self.finish(c, "adopt_signature", out)
     }
 
-    pub fn credit_deposit(&mut self, tx: Hash32, hints: Hints, from: EvmAddr, amount: near_sdk::json_types::U128) -> Value {
+    pub fn credit_deposit(
+        &mut self,
+        tx: Hash32,
+        hints: Hints,
+        from: EvmAddr,
+        amount: near_sdk::json_types::U128,
+    ) -> Value {
         let c = self.caller();
         if let Some(v) = self.need_gas(&c, "credit_deposit") {
             return v;
         }
-        let out = self.vault.credit_deposit(&NearHasher, tx, hints, from, amount.0);
+        let out = self
+            .vault
+            .credit_deposit(&NearHasher, tx, hints, from, amount.0);
         self.finish(c, "credit_deposit", out)
     }
 
@@ -458,7 +535,13 @@ impl Contract {
                 self.run_effects(fx);
                 let b = self_batch();
                 env::promise_batch_action_deploy_contract(b, &code);
-                env::promise_batch_action_function_call(b, "migrate", &[], NearToken::from_yoctonear(0), Gas::from_tgas(50));
+                env::promise_batch_action_function_call(
+                    b,
+                    "migrate",
+                    &[],
+                    NearToken::from_yoctonear(0),
+                    Gas::from_tgas(50),
+                );
                 json!({ "ok": true, "code_hash": hex0x(&hash.0) })
             }
             Err(r) => self.reject(c, "execute_upgrade", r),
@@ -472,11 +555,21 @@ impl Contract {
     pub fn migrate() -> Self {
         let old: Contract = env::state_read().unwrap_or_else(|| env::panic_str("no state"));
         let b = self_batch();
-        if let Some(a) = old.vault.agent_key.as_ref().and_then(|k| k.parse::<PublicKey>().ok()) {
+        if let Some(a) = old
+            .vault
+            .agent_key
+            .as_ref()
+            .and_then(|k| k.parse::<PublicKey>().ok())
+        {
             env::promise_batch_action_delete_key(b, &a);
             add_fc_key(b, &a, old.key_allowance, AGENT_METHODS);
         }
-        for g in old.vault.guardians.iter().filter_map(|k| k.parse::<PublicKey>().ok()) {
+        for g in old
+            .vault
+            .guardians
+            .iter()
+            .filter_map(|k| k.parse::<PublicKey>().ok())
+        {
             env::promise_batch_action_delete_key(b, &g);
             add_fc_key(b, &g, old.key_allowance, GUARDIAN_METHODS);
         }
@@ -487,7 +580,15 @@ impl Contract {
     // -----------------------------------------------------------------------------------------
     // MPC callbacks. They take ids only; every external fact comes from the promise result.
 
-    fn check_signature(&self, op: u64, slot: u32, which: Which, big_r: &str, s: &str, v: u8) -> Option<SignedTx> {
+    fn check_signature(
+        &self,
+        op: u64,
+        slot: u32,
+        which: Which,
+        big_r: &str,
+        s: &str,
+        v: u8,
+    ) -> Option<SignedTx> {
         let tx = self.vault.tx_for(op, slot, which)?;
         let payload = evm::signing_payload(&NearHasher, &tx);
         let draft = self.vault.draft(op, slot, which)?;
@@ -498,15 +599,36 @@ impl Contract {
         if key.as_slice() != self.vault_pk.as_slice() {
             return None;
         }
-        let sig = MpcSignature { big_r: big_r.to_string(), s: s.to_string(), recovery_id: v };
+        let sig = MpcSignature {
+            big_r: big_r.to_string(),
+            s: s.to_string(),
+            recovery_id: v,
+        };
         let (raw, hash) = evm::assemble(&NearHasher, &tx, &sig)?;
-        Some(SignedTx { hash: Hash32(hash), raw: hex0x(&raw) })
+        Some(SignedTx {
+            hash: Hash32(hash),
+            raw: hex0x(&raw),
+        })
     }
 
     #[private]
-    pub fn on_signed(&mut self, op: u64, slot: u32, which: Which, req: u64, #[callback_result] r: Result<SigResp, PromiseError>) -> Value {
+    pub fn on_signed(
+        &mut self,
+        op: u64,
+        slot: u32,
+        which: Which,
+        req: u64,
+        #[callback_result] r: Result<SigResp, PromiseError>,
+    ) -> Value {
         let signed = match r {
-            Ok(sig) => self.check_signature(op, slot, which, &sig.big_r.affine_point, &sig.s.scalar, sig.recovery_id),
+            Ok(sig) => self.check_signature(
+                op,
+                slot,
+                which,
+                &sig.big_r.affine_point,
+                &sig.s.scalar,
+                sig.recovery_id,
+            ),
             Err(_) => None,
         };
         let out = self.vault.on_signed(now(), op, slot, req, signed);
@@ -514,28 +636,49 @@ impl Contract {
     }
 
     fn check_attestation(&self, expected: &Hash32, v: &VerifyResp) -> bool {
-        let Some(hash) = parse_hex::<32>(&v.payload_hash) else { return false };
+        let Some(hash) = parse_hex::<32>(&v.payload_hash) else {
+            return false;
+        };
         if hash != expected.0 {
             return false;
         }
-        match recover(&hash, &v.signature.big_r.affine_point, &v.signature.s.scalar, v.signature.recovery_id) {
+        match recover(
+            &hash,
+            &v.signature.big_r.affine_point,
+            &v.signature.s.scalar,
+            v.signature.recovery_id,
+        ) {
             Some(k) => k.as_slice() == self.foreign_pk.as_slice(),
             None => false,
         }
     }
 
     #[private]
-    pub fn on_verified(&mut self, op: u64, slot: u32, req: u64, expected: Hash32, #[callback_result] r: Result<VerifyResp, PromiseError>) -> Value {
+    pub fn on_verified(
+        &mut self,
+        op: u64,
+        slot: u32,
+        req: u64,
+        expected: Hash32,
+        #[callback_result] r: Result<VerifyResp, PromiseError>,
+    ) -> Value {
         let ok = match r {
             Ok(v) => self.check_attestation(&expected, &v),
             Err(_) => false,
         };
-        let out = self.vault.on_verified(&NearHasher, now(), op, slot, req, ok);
+        let out = self
+            .vault
+            .on_verified(&NearHasher, now(), op, slot, req, ok);
         self.finish(Caller::Public, "on_verified", out)
     }
 
     #[private]
-    pub fn on_credit_verified(&mut self, req: u64, expected: Hash32, #[callback_result] r: Result<VerifyResp, PromiseError>) -> Value {
+    pub fn on_credit_verified(
+        &mut self,
+        req: u64,
+        expected: Hash32,
+        #[callback_result] r: Result<VerifyResp, PromiseError>,
+    ) -> Value {
         let ok = match r {
             Ok(v) => self.check_attestation(&expected, &v),
             Err(_) => false,
@@ -608,12 +751,33 @@ fn self_batch() -> near_sdk::PromiseIndex {
 
 /// Add a function-call key restricted to this account, `methods`, and a finite allowance (N1/F8).
 fn add_fc_key(b: near_sdk::PromiseIndex, pk: &PublicKey, allowance: NearToken, methods: &str) {
-    let a = Allowance::limited(allowance).unwrap_or_else(|| env::panic_str("key allowance must be above zero"));
-    env::promise_batch_action_add_key_allowance_with_function_call(b, pk, 0, a, &env::current_account_id(), methods);
+    let a = Allowance::limited(allowance)
+        .unwrap_or_else(|| env::panic_str("key allowance must be above zero"));
+    env::promise_batch_action_add_key_allowance_with_function_call(
+        b,
+        pk,
+        0,
+        a,
+        &env::current_account_id(),
+        methods,
+    );
 }
 
 /// Call the MPC signer with 1 yoctoNEAR and route the result to one of our callbacks.
 fn mpc_then(signer: &AccountId, method: &str, args: String, callback: &str, cb_args: Value) {
-    let p = env::promise_create(signer.clone(), method, args.as_bytes(), NearToken::from_yoctonear(1), GAS_MPC);
-    env::promise_then(p, env::current_account_id(), callback, cb_args.to_string().as_bytes(), NearToken::from_yoctonear(0), GAS_CALLBACK);
+    let p = env::promise_create(
+        signer.clone(),
+        method,
+        args.as_bytes(),
+        NearToken::from_yoctonear(1),
+        GAS_MPC,
+    );
+    env::promise_then(
+        p,
+        env::current_account_id(),
+        callback,
+        cb_args.to_string().as_bytes(),
+        NearToken::from_yoctonear(0),
+        GAS_CALLBACK,
+    );
 }

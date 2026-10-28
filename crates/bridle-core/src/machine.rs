@@ -539,7 +539,9 @@ impl Vault {
         if self.epoch.agent_actions >= self.policy.agent_quota_per_epoch {
             return Err(Reject::QuotaExhausted);
         }
-        if self.epoch.last_agent_ms > 0 && now < self.epoch.last_agent_ms + self.policy.agent_min_interval_ms {
+        if self.epoch.last_agent_ms > 0
+            && now < self.epoch.last_agent_ms + self.policy.agent_min_interval_ms
+        {
             return Err(Reject::TooSoon);
         }
         let fx = self.start(h, now, action, Origin::Agent)?;

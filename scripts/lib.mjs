@@ -37,7 +37,8 @@ export const baseRpc = (m, p) => rpc(BASE_RPC, m, p);
 
 /** Read a secret key: an account name in the keychain, or a path to a JSON key file. */
 export function secretKey(nameOrPath) {
-  const p = fs.existsSync(nameOrPath) ? nameOrPath : path.join(KEYS_DIR, `${nameOrPath}.json`);
+  if (/^ed25519:/.test(nameOrPath)) return nameOrPath;
+  const p =fs.existsSync(nameOrPath) ? nameOrPath : path.join(KEYS_DIR, `${nameOrPath}.json`);
   const j = JSON.parse(fs.readFileSync(p, "utf8"));
   return j.private_key || j.secret_key;
 }

@@ -1,6 +1,7 @@
 // The Bridle agent: an untrusted operator holding only the vault's `agent_act` function-call key.
 //
-//   node agent/agent.mjs <vault> --key <agent key file> [--loop] [--say "<instruction>"] [--keeper <near account>]
+//   node agent/agent.mjs <vault> --key <agent key file or ed25519:...> [--loop] [--say "<instruction>"]
+//                        [--keeper <near account> [--keeper-key <key file or ed25519:...>]]
 //
 // Without --say it reads Aave's rate and the vault state and acts within the mandate (planFromMarket).
 // With --say it obeys the instruction like a prompt-injected LLM would (planFromText), or, if
@@ -45,11 +46,13 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const a = process.argv.slice(2);
   const opt = (k, d) => (a.includes(k) ? a[a.indexOf(k) + 1] : d);
   const vault = a[0];
-  const keyFile = opt("--key");
-  const keeper = new Keeper(vault, opt("--keeper", "bridle-hq.testnet"));
+  // `--key arena` uses the deliberately published arena key (web/arena-keys.js).
+  const keyFile = opt("--key") === "arena" ? (await import("../web/arena-keys.js")).ARENA_AGENT_KEY : opt("--key");
+  // Optional: drive accepted operations to their landing proof (any NEAR account can be the keeper).
+  const keeper = a.includes("--keeper") ? new Keeper(vault, opt("--keeper"), { keyFile: opt("--keeper-key") }) : null;
   do {
     const res = await once(vault, keyFile, opt("--say"));
-    if (res.result?.ok) {
+    if (res.result?.ok && keeper) {
       for (let did; (did = await keeper.tick()) !== null; ) {
         log("keeper:", did);
         await sleep(/waiting|cooldown/.test(did) ? 8000 : 1500);

@@ -1,0 +1,23 @@
+[workspace]
+resolver = "2"
+members = ["crates/bridle-core"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+
+[workspace.dependencies]
+borsh = { version = "1", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+hex = "0.4"
+omni-transaction = { version = "0.5.0", default-features = false, features = ["evm"] }
+near-sdk = { version = "5.30", features = ["unstable"] }
+
+[profile.release]
+codegen-units = 1
+opt-level = "z"
+lto = true
+debug = false
+panic = "abort"
+overflow-checks = true

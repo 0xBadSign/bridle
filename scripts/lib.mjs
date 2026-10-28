@@ -70,6 +70,8 @@ export async function send(acct, receiverId, acts, { timeoutMs = 420000 } = {}) 
     hash = baseEncode(crypto.createHash("sha256").update(encodeTransaction(stx.transaction)).digest());
     sent = await nearRpc("send_tx", { signed_tx_base64: Buffer.from(stx.encode()).toString("base64"), wait_until: "INCLUDED" });
     if (sent.error && /InvalidNonce/.test(JSON.stringify(sent.error)) && attempt < 4) {
+      // near-api-js caches nonces per key; drop the stale one so the next attempt refetches it.
+      await acct.nonceManager?.invalidate?.(stx.transaction.publicKey, stx.transaction.nonceIndex);
       await sleep(1500 + Math.random() * 1500);
       continue;
     }

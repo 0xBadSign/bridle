@@ -15,7 +15,8 @@ const args = process.argv.slice(2);
 const cfg = JSON.parse(fs.readFileSync(args[0], "utf8"));
 const opt = (k, d) => (args.includes(k) ? args[args.indexOf(k) + 1] : d);
 const vault = opt("--vault", cfg.vault);
-const wasm = opt("--wasm", path.join(os.homedir(), ".cache/bridle-target/near/bridle_vault/bridle_vault.wasm"));
+const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
+const wasm = opt("--wasm", path.join(process.env.CARGO_TARGET_DIR || path.join(ROOT, "target"), "near/bridle_vault/bridle_vault.wasm"));
 const nearToYocto = (n) => BigInt(Math.round(Number(n) * 1000)) * 10n ** 21n;
 
 const keyDir = path.join(os.homedir(), ".near-credentials", "testnet", "bridle-keys", vault);

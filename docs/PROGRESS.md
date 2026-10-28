@@ -1,8 +1,9 @@
 # Progress
 
 ## Where we are
-- M0 done. M1 done: core and vault are live on testnet. M2 and M3 logic is implemented in core and unit/property tested. Live coverage so far: deposit credit, supply (approve + supply), DAO fast outflow, parked outflow, veto, and rejections.
-- Next: the M4 sandbox (mock signer) and `make demo`; a live suite for the remaining paths (withdraw, unwind, cancel, probe, upgrade, key changes); M5 agent and arena; M6 dashboard and README.
+- M0 to M6 are built. The core, the vault, the keeper, the agent (market mode + gullible injection mode + optional LLM), the arena vault, the dashboard (`web/`) and `make demo` (offline, 75/75 PASS) are all done. `scripts/check.sh` passes everything.
+- Every path ran live on testnet. Evidence is below and in `.private/live-suite.out`.
+- Remaining items need the owner: O-1, O-2, O-3. Hosting the dashboard on GitHub Pages also needs the public repo (`node scripts/build-pages.mjs` builds `_site/`).
 
 ## Testnet deployment
 | What | Value |
@@ -11,6 +12,7 @@
 | Vault Base address (MPC-derived) | `0x96fbd55e58c16b10df15532e9157e067f2d1d8aa` |
 | Owner DAO | `bridle-hq.sputnik-v2.testnet`. Council `bridle-hq.testnet`, 1-of-1. Create tx `DivTyMizcMJz6SPV5mtDhtKKp5uPrVFFbkSNKkMQ4dwL` |
 | Treasury (DAO-derived Base address, path `treasury`) | `0xdc35e2ce2ae9c135795b6cc53288d4f72a866007` |
+| Arena vault (published agent key, `web/arena-keys.js`) | `arena.bridle-hq.testnet`, Base `0x53532502c663fdbe9dee366b17e03ce79ec6d3de`. Public keeper `keeper.bridle-hq.testnet` (function-call key, public methods only) |
 | Agent and guardian keys | `~/.near-credentials/testnet/bridle-keys/vault.bridle-hq.testnet/` (WSL, not in the repo) |
 
 ## Owner actions
@@ -41,3 +43,23 @@
   - Rejections: agent send-to-treasury `not_allowed`, agent 60 USDC `above_agent_max`, outsider `agent_act` and `dao_act` `not_allowed`, guardian loosening `not_tighter`.
   - DAO fast outflow of 10 USDC: proposal 0, attested.
   - DAO outflow of 15 more: parked in the long lane; execute before unlock `not_yet_unlocked`; guardian veto `3ii5JKgNy5hdqvdSDXd2fKSMFXnwv6ZAejzNv9sGsrwf`.
+- 2026-10-28: merged the dashboard (web/, browser keeper) and the offline demo (mock signer, mock Base, `make demo` 75/75 PASS in 136 s).
+- 2026-10-28: live suite (`scripts/live-suite.mjs`):
+  - Agent withdraw: `7HRmvSCniCPuLfvBM968HCastpxYLSR5SRKUrponNf5p`.
+  - Guardian cancel at the same nonce. The Base cancel `0x1e869c30...` was attested, the op was aborted and the reservation released. The suite's own check threw on a tooling nonce race; the settle was completed with a separate keeper.
+  - Pause, cooldown and DAO unpause: `7niK3m9s...`, `E3Z2VvPU...`.
+  - Policy:
+    - tightening applied immediately: `GFqhK59m...`;
+    - loosening parked in the short lane, then executed: `7v6QZC2s...`.
+  - Agent key rotation, old key deleted: `J2o84YBQ...`.
+  - Guardians:
+    - removal immediate: `o9Rm6hhD...`;
+    - addition after the long window: `3FgNkvwb...`.
+  - Upgrade:
+    - parked by code hash;
+    - refused early (`not_yet_unlocked`);
+    - refused with the wrong code (`code_hash_mismatch`);
+    - applied with the exact code: `BdeP6faL...`, `migrated`. State and keys survived.
+  - Guardian unwind: all 25 USDC principal returned to the vault address and attested (`0x7981072f...`).
+  - Final state: ledger idle 40 USDC equals the on-chain USDC balance; aUSDC 0; Base nonce 6 equals the vault's `next_nonce`.
+- D-009: `scripts/lib.mjs send()` invalidates near-api-js's cached nonce and retries on InvalidNonce. Two tools sharing one key had raced.

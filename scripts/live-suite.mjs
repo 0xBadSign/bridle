@@ -19,7 +19,7 @@ const only = opt("--only", "").split(",").filter(Boolean);
 const DAO = "bridle-hq.sputnik-v2.testnet";
 const COUNCIL = "bridle-hq.testnet";
 const KD = `${os.homedir()}/.near-credentials/testnet/bridle-keys/${V}`;
-const WASM = `${os.homedir()}/.cache/bridle-target/near/bridle_vault/bridle_vault.wasm`;
+const WASM = `${process.env.CARGO_TARGET_DIR || new URL("../target", import.meta.url).pathname}/near/bridle_vault/bridle_vault.wasm`;
 const results = [];
 const check = (name, ok, evidence = "") => {
   results.push({ name, ok, evidence });
@@ -171,6 +171,7 @@ const steps = {
   },
 
   async final() {
+    await drain();
     const keys = await accessKeys(V);
     const rej = await view(V, "get_rejections");
     const d = (await state()).chain.vault;

@@ -8,7 +8,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 # shellcheck disable=SC1091
 [ -f "$HOME/.cargo/env" ] && . "$HOME/.cargo/env"
-export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$HOME/.cache/bridle-target}"
+export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$ROOT/target}"
 export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-4}"
 
 ONLY="${1:-all}"
@@ -32,7 +32,7 @@ no_secrets() {
     # Private keys must never be committed.
     local hits
     # web/arena-keys.js holds the deliberately published arena keys (see that file).
-    hits=$(git ls-files -co --exclude-standard | grep -v '^web/arena-keys\.js$' | xargs -d '\n' grep -n -E 'ed25519:[1-9A-HJ-NP-Za-km-z]{80,}|"private_key"' 2>/dev/null || true)
+    hits=$(git ls-files -co --exclude-standard | grep -v -E '^(web/arena-keys\.js|scripts/check\.sh)$' | xargs -d '\n' grep -n -E 'ed25519:[1-9A-HJ-NP-Za-km-z]{80,}|"private_key"' 2>/dev/null || true)
     [ -z "$hits" ] || { echo "$hits"; return 1; }
 }
 

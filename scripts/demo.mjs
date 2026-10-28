@@ -46,7 +46,7 @@ fs.rmSync(tmp, { recursive: true, force: true });
 fs.mkdirSync(path.join(tmp, "keys"), { recursive: true });
 process.env.TMPDIR = tmp; // the sandbox binary cache and the temp dir must share a filesystem
 
-const targetDir = process.env.CARGO_TARGET_DIR || path.join(os.homedir(), ".cache/bridle-target");
+const targetDir = process.env.CARGO_TARGET_DIR || path.join(ROOT, "target");
 const VAULT_WASM = process.env.VAULT_WASM || path.join(targetDir, "near/bridle_vault/bridle_vault.wasm");
 const MOCK_WASM = process.env.MOCK_WASM || path.join(targetDir, "near/bridle_mock_signer/bridle_mock_signer.wasm");
 for (const f of [VAULT_WASM, MOCK_WASM]) {

@@ -31,7 +31,8 @@ english_only() {
 no_secrets() {
     # Private keys must never be committed.
     local hits
-    hits=$(git ls-files -co --exclude-standard | xargs -d '\n' grep -n -E 'ed25519:[1-9A-HJ-NP-Za-km-z]{80,}|"private_key"' 2>/dev/null || true)
+    # web/arena-keys.js holds the deliberately published arena keys (see that file).
+    hits=$(git ls-files -co --exclude-standard | grep -v '^web/arena-keys\.js$' | xargs -d '\n' grep -n -E 'ed25519:[1-9A-HJ-NP-Za-km-z]{80,}|"private_key"' 2>/dev/null || true)
     [ -z "$hits" ] || { echo "$hits"; return 1; }
 }
 

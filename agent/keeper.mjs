@@ -3,7 +3,7 @@
 // affect liveness: a wrong hint makes the MPC refuse to attest, it can never make the vault count
 // something that did not happen.
 //
-//   node agent/keeper.mjs <vault> [--as <near account>] [--once]
+//   node agent/keeper.mjs <vault> [--as <near account>] [--key <key file>] [--once]
 //   node agent/keeper.mjs <vault> --credit <base tx hash>       # prove an inbound USDC deposit
 import { account, baseRpc, call, log, sleep, view } from "../scripts/lib.mjs";
 
@@ -16,9 +16,9 @@ const TOPIC = {
 const word = (a) => "0x" + a.toLowerCase().replace(/^0x/, "").padStart(64, "0");
 
 export class Keeper {
-  constructor(vault, signerAccount, { gasT = 150 } = {}) {
+  constructor(vault, signerAccount, { gasT = 150, keyFile } = {}) {
     this.vault = vault;
-    this.acct = account(signerAccount);
+    this.acct = account(signerAccount, keyFile || signerAccount);
     this.gasT = gasT;
   }
 
@@ -139,7 +139,7 @@ const now = () => Date.now();
 if (import.meta.url === `file://${process.argv[1]}`) {
   const a = process.argv.slice(2);
   const opt = (k, d) => (a.includes(k) ? a[a.indexOf(k) + 1] : d);
-  const k = new Keeper(a[0], opt("--as", "bridle-hq.testnet"));
+  const k = new Keeper(a[0], opt("--as", "bridle-hq.testnet"), { keyFile: opt("--key") });
   if (a.includes("--credit")) {
     console.log(JSON.stringify(await k.credit(opt("--credit")), null, 1));
   } else {

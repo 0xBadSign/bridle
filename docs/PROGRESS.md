@@ -63,3 +63,15 @@
   - Guardian unwind: all 25 USDC principal returned to the vault address and attested (`0x7981072f...`).
   - Final state: ledger idle 40 USDC equals the on-chain USDC balance; aUSDC 0; Base nonce 6 equals the vault's `next_nonce`.
 - D-009: `scripts/lib.mjs send()` invalidates near-api-js's cached nonce and retries on InvalidNonce. Two tools sharing one key had raced.
+- 2026-10-28: independent AI-judge-style audit (preliminary score about 7.6/10) found three real issues. Fixed in v2:
+  - 2a: a deposit could be credited again after its proof was evicted. Fix: a consumed-proof floor block, plus a 1 USDC minimum credit.
+  - 2b: one caller could block settlement. Fix: up to 4 verifies in flight per step, one per caller, with per-caller cooldowns.
+  - 2c: a stale parked policy could undo a guardian tightening. Fix: it is re-classified at execute time and refused as `stale_parked`.
+  - Also: the upgrade approval is now cleared by the new code's `migrate`, and `uncompressed()` strips exactly one `04` prefix.
+  - The README was rewritten to match the code. Live MPC evidence is now in `docs/evidence/`. A GitHub Actions workflow was added.
+- 2026-10-28: Aave aToken rounding seen live: 32 USDC supplied showed as 31.999998 aUSDC. Unwind now leaves `UNWIND_DUST` (100 units) in Aave. Live unwind after the fix: idle 39.9999 equals on-chain.
+- 2026-10-28: live upgrades of both vaults:
+  - v1.1 (dust): main `B7g2YFSF...`, arena `5dJ3qsLe...`.
+  - v2 with v1 to v2 state migration: main `GVPJyDt4Tg8ZAfFcahvSaNFVLYHe84m5NaWRV4GEwXss`, arena `H5CdENCopiRZSM3Zop8oSCfGaA5Q4T8Pjou93Eqf7iS2`. Both report `state_version` 2 and their ledgers are intact.
+  - Post-migration smoke: arena injection refused (`AH36ycxf...`). The agent's market-mode supply of 31.9999 USDC was attested in both steps (`D9aTFVoX47CbYSB29bN4z7agRtASLvfrVsHn7Aqo4EHE`).
+- 2026-10-28: `make demo` 75/75 PASS on the v2 code; `scripts/check.sh` all green.

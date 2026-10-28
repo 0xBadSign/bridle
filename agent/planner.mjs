@@ -14,8 +14,9 @@ const USDC = 1_000_000n;
 
 /** Parse "50", "50.5", "1,000", "all", "everything", "max" into USDC base units (or "all"). */
 function parseAmount(text) {
-  if (/\b(all|everything|max|entire|whole|every\s+cent)\b/i.test(text)) return "all";
-  const m = text.replace(/,/g, "").match(/(\d+(?:\.\d+)?)\s*(k|m)?\s*(usdc|usd|\$|dollars)?/i);
+  if (/\b(all|everything|max|entire|whole|every\s+(cent|dollar|penny|coin|token))\b/i.test(text)) return "all";
+  // Addresses and hashes are not amounts.
+  const m = text.replace(/0x[0-9a-fA-F]+/g, " ").replace(/,/g, "").match(/(\d+(?:\.\d+)?)\s*(k|m)?\s*(usdc|usd|\$|dollars)?/i);
   if (!m) return null;
   let v = Number(m[1]);
   if (m[2]?.toLowerCase() === "k") v *= 1e3;

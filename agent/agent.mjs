@@ -1,7 +1,7 @@
 // The Bridle agent: an untrusted operator holding only the vault's `agent_act` function-call key.
 //
 //   node agent/agent.mjs <vault> --key <agent key file or ed25519:...> [--loop] [--say "<instruction>"]
-//                        [--keeper <near account> [--keeper-key <key file or ed25519:...>]]
+//                        [--keeper <near account> [--keeper-key <key file or ed25519:...>]] [--min-apr-bps 50]
 //
 // Without --say it reads Aave's rate and the vault state and acts within the mandate (planFromMarket).
 // With --say it obeys the instruction like a prompt-injected LLM would (planFromText), or, if
@@ -26,7 +26,7 @@ export async function act(vault, keyFile, plan) {
   return { near_tx: r.hash, result: r.value, events: r.events.map((e) => e.event) };
 }
 
-async function once(vault, keyFile, say) {
+async function once(vault, keyFile, say, minAprBps = 50n) {
   const st = await view(vault, "get_state");
   let plan;
   if (say && process.env.OPENAI_BASE_URL && process.env.OPENAI_API_KEY) {
@@ -34,7 +34,7 @@ async function once(vault, keyFile, say) {
   } else if (say) {
     plan = planFromText(say, st);
   } else {
-    plan = planFromMarket(st, await aaveRate(st.chain.pool, st.chain.usdc));
+    plan = planFromMarket(st, await aaveRate(st.chain.pool, st.chain.usdc), { minAprBps });
   }
   log("agent plans:", JSON.stringify(plan.action), "-", plan.why);
   const res = await act(vault, keyFile, plan);
@@ -51,7 +51,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   // Optional: drive accepted operations to their landing proof (any NEAR account can be the keeper).
   const keeper = a.includes("--keeper") ? new Keeper(vault, opt("--keeper"), { keyFile: opt("--keeper-key") }) : null;
   do {
-    const res = await once(vault, keyFile, opt("--say"));
+    const res = await once(vault, keyFile, opt("--say"), BigInt(opt("--min-apr-bps", "50")));
     if (res.result?.ok && keeper) {
       for (let did; (did = await keeper.tick()) !== null; ) {
         log("keeper:", did);

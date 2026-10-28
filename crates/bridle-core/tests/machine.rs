@@ -759,15 +759,30 @@ fn guardian_unwind_only_returns_to_the_vault_address() {
     let r = w.v.agent_act(&TH, w.now, Action::Supply { amount: 80 });
     w.run(r).unwrap();
     w.finish();
+    assert_eq!(
+        w.v.guardian_unwind(&TH, w.now, G1),
+        Err(Reject::ZeroAmount),
+        "below the dust nothing is worth unwinding"
+    );
+    w.credit(10_000_000);
+    w.now += MIN;
+    let r =
+        w.v.agent_act(&TH, w.now, Action::Supply { amount: 10_000_000 });
+    w.run(r).unwrap();
+    w.finish();
     let r = w.v.guardian_unwind(&TH, w.now, G1);
     w.run(r).unwrap();
     let op = w.v.active.unwrap();
+    // Unwind leaves UNWIND_DUST in Aave so Aave's rounding cannot make it revert.
     assert_eq!(
         w.v.op(op).unwrap().slots[0].call,
-        Call::Withdraw { amount: 80 }
+        Call::Withdraw {
+            amount: 10_000_080 - UNWIND_DUST
+        }
     );
     w.finish();
-    assert_eq!(w.v.ledger.idle, 100);
+    assert_eq!(w.v.ledger.principal, UNWIND_DUST);
+    assert_eq!(w.v.ledger.idle + w.v.ledger.principal, 10_000_100);
     assert_eq!(w.v.ledger.total_sent, 0, "nothing left D");
 }
 

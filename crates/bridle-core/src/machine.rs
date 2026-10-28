@@ -33,6 +33,10 @@ pub const MAX_PARKED_OPEN: usize = 16;
 pub const MAX_OPS_KEPT: usize = 64;
 pub const MAX_REJECTIONS_KEPT: usize = 64;
 pub const MAX_CREDITS_KEPT: usize = 512;
+/// Aave's aToken balance can read a few base units below the supplied amount right after a supply
+/// (scaled-balance rounding; seen live: 32 USDC supplied, 31.999998 aUSDC). An exact-principal
+/// withdraw would then revert, so an unwind leaves this much dust in Aave.
+pub const UNWIND_DUST: u128 = 100;
 
 // ---------------------------------------------------------------------------------------------
 // Types
@@ -613,7 +617,7 @@ impl Vault {
                 (amount, vec![Call::Withdraw { amount }])
             }
             Action::Unwind => {
-                let amount = l.principal - l.withdrawing;
+                let amount = (l.principal - l.withdrawing).saturating_sub(UNWIND_DUST);
                 if amount == 0 {
                     return Err(Reject::ZeroAmount);
                 }

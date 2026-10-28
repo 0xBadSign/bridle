@@ -62,9 +62,18 @@ export function newKeyFile(file) {
  * `acts` is an array of near-api-js actions.
  */
 export async function send(acct, receiverId, acts, { timeoutMs = 420000 } = {}) {
-  const stx = await acct.createSignedTransaction({ receiverId, actions: acts });
-  const hash = baseEncode(crypto.createHash("sha256").update(encodeTransaction(stx.transaction)).digest());
-  const sent = await nearRpc("send_tx", { signed_tx_base64: Buffer.from(stx.encode()).toString("base64"), wait_until: "INCLUDED" });
+  let stx, hash, sent;
+  // Two processes using the same access key race on its nonce; rebuild and resend on InvalidNonce.
+  for (let attempt = 0; ; attempt++) {
+    stx = await acct.createSignedTransaction({ receiverId, actions: acts });
+    hash = baseEncode(crypto.createHash("sha256").update(encodeTransaction(stx.transaction)).digest());
+    sent = await nearRpc("send_tx", { signed_tx_base64: Buffer.from(stx.encode()).toString("base64"), wait_until: "INCLUDED" });
+    if (sent.error && /InvalidNonce/.test(JSON.stringify(sent.error)) && attempt < 4) {
+      await sleep(1500 + Math.random() * 1500);
+      continue;
+    }
+    break;
+  }
   if (sent.error && !/TIMEOUT/i.test(JSON.stringify(sent.error))) throw new Error(`rejected ${hash}: ${JSON.stringify(sent.error).slice(0, 400)}`);
   const t0 = Date.now();
   while (Date.now() - t0 < timeoutMs) {

@@ -3,6 +3,8 @@
 //   io.view(contract, method, args?)            -> parsed JSON of a NEAR view call
 //   io.call(vault, method, args)                -> { hash, value, events } of a NEAR function call
 //   io.baseRpc(method, params)                  -> the raw JSON-RPC reply from Base
+//   io.pollMs (optional)                         -> wait between receipt polls (default 2000)
+// Deadlines and cooldowns use the chain's clock (`get_state().now_ms`), not the local one.
 //
 // The keeper is an untrusted helper. It broadcasts the vault's signed Base transactions, waits for
 // the `safe` head, and asks the vault to settle them with position hints. Hints only affect
@@ -88,10 +90,10 @@ export class KeeperCore {
           continue;
         }
         if (parseInt(rc.blockNumber, 16) > safe) return `${which} ${s.hash.slice(0, 10)} mined, waiting for safe head`;
-        if (Date.now() < slot.cooldown_until_ms) return "verify cooldown";
+        if (st.now_ms < slot.cooldown_until_ms) return "verify cooldown";
         if (which === "main" && rc.status !== "0x1") {
           // Reverted: the MPC will never attest it. After the deadline anyone may probe the next nonce.
-          if (Date.now() > slot.reserved_at_ms + st.policy.settle_deadline_ms && !slot.probe) {
+          if (st.now_ms > slot.reserved_at_ms + st.policy.settle_deadline_ms && !slot.probe) {
             const r = await this.call("probe", {});
             return `main reverted; probe -> ${JSON.stringify(r.value)}`;
           }
@@ -112,10 +114,11 @@ export class KeeperCore {
     const st = await this.state();
     const D = st.chain.vault.toLowerCase();
     let rc;
-    while (!(rc = await this.receipt(txHash))) await sleep(2000);
+    const poll = this.io.pollMs || 2000;
+    while (!(rc = await this.receipt(txHash))) await sleep(poll);
     const l = rc.logs.find((x) => x.address.toLowerCase() === st.chain.usdc.toLowerCase() && x.topics[0] === TOPIC.transfer && x.topics[2] === word(D));
     if (!l) throw new Error("no USDC transfer to the vault in this tx");
-    while ((await this.safeHead()) < parseInt(rc.blockNumber, 16)) await sleep(5000);
+    while ((await this.safeHead()) < parseInt(rc.blockNumber, 16)) await sleep(poll * 2.5);
     const from = "0x" + l.topics[1].slice(26);
     const amount = BigInt(l.data).toString();
     const r = await this.call("credit_deposit", { tx: txHash, hints: this.hints(rc, parseInt(l.logIndex, 16)), from, amount });

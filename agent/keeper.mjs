@@ -9,9 +9,13 @@ import { account, baseRpc, call, log, sleep, view } from "../scripts/lib.mjs";
 import { KeeperCore } from "./keeper-core.mjs";
 
 export class Keeper extends KeeperCore {
-  constructor(vault, signerAccount, { gasT = 150, keyFile } = {}) {
-    const acct = account(signerAccount, keyFile || signerAccount);
-    super(vault, { view, baseRpc, call: (v, method, args) => call(acct, v, method, args, { gasT }) }, { onLog: (m) => log(m) });
+  /**
+   * `signerAccount` is a keychain name or a ready near-api-js Account. `rpc` replaces the Base
+   * JSON-RPC (the offline demo injects a mock Base); `pollMs` is the wait between receipt polls.
+   */
+  constructor(vault, signerAccount, { gasT = 150, keyFile, rpc = baseRpc, pollMs = 2000 } = {}) {
+    const acct = typeof signerAccount === "string" ? account(signerAccount, keyFile || signerAccount) : signerAccount;
+    super(vault, { view, baseRpc: rpc, pollMs, call: (v, method, args) => call(acct, v, method, args, { gasT }) }, { onLog: (m) => log(m) });
     this.acct = acct;
   }
 

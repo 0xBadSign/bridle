@@ -265,4 +265,5 @@ make check    # fmt, clippy, tests, contract builds, wasm import check, English-
 ## Hackathon compliance
 - All code in this repository was written from 2026-10-28, inside the window that opened on 2026-10-19 (rule Q-001). The feasibility probe from the same day is not part of this repository; its results are in `docs/evidence/`.
 - Testnet only (rule Q-010).
+- Companion project: **signing-layer** (Investment Thesis track, same author, independent repository): a data-backed thesis on NEAR as a signing and settlement layer for other chains. Bridle uses none of its data, and it uses none of Bridle's claims.
 - License: MIT OR Apache-2.0.

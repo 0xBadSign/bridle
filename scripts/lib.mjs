@@ -8,6 +8,8 @@ import os from "os";
 import path from "path";
 
 export const NEAR_RPC = process.env.NEAR_RPC || "https://test.rpc.fastnear.com";
+// Regular RPC nodes drop old transactions after a few epochs; old evidence is read from an archival node.
+export const NEAR_ARCHIVAL_RPC = process.env.NEAR_ARCHIVAL_RPC || "https://archival-rpc.testnet.fastnear.com";
 export const BASE_RPC = process.env.BASE_RPC || "https://sepolia.base.org";
 export const SIGNER = process.env.MPC_SIGNER || "v1.signer-prod.testnet";
 export const KEYS_DIR = process.env.BRIDLE_KEYS || path.join(os.homedir(), ".near-credentials", "testnet");
@@ -34,6 +36,7 @@ export async function rpc(url, method, params) {
 }
 
 export const nearRpc = (m, p) => rpc(NEAR_RPC, m, p);
+export const nearArchivalRpc = (m, p) => rpc(NEAR_ARCHIVAL_RPC, m, p);
 export const baseRpc = (m, p) => rpc(BASE_RPC, m, p);
 
 /** Read a secret key: an account name in the keychain, or a path to a JSON key file. */

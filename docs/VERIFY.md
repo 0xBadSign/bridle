@@ -51,7 +51,7 @@ All of these are `make verify` ids; the hash is in `docs/evidence/claims.json` n
 | MPC behaviour tests: reverted txs never attested, log bound to its tx, replay, nonce conflicts, `#[private]` vs keys | `--only M01,...,M14` | `PASS  M01` to `M14` | M04 (replay: the attestation of the supply tx returned again with the same payload hash), M05 to M08 (attacks A, B, C, T11), M09 and M10 (T1), M11 (T2: the reverted tx is mined with status 0), M12 and M13 (T6), M14 (T7 replacement). Absence of an attestation is not recorded on chain: see the reading-only list |
 | Both vaults run the code in `deploy/prebuilt/` | `--only E27,E28,E29,E04` | `PASS  E27`, `E28`, `E29`, `E04` | `checks.code_hash`: deployed `code_hash` equals base58(sha256(prebuilt wasm)); `checks.wasm_imports` runs `scripts/wasm-imports.mjs` on it |
 | v2 upgrade of both vaults (progress log) | `--only E25,E26,E30,E31,E32` | `PASS` on each | `migrated` events, historic v2 code hash in `claims.json` `historic_code_hashes` |
-| Ledger equals Base balances (Aave rounding dust 100 base units) | `--only S10,S11,S08,S09` | `PASS  S10`, `S11`, `S08`, `S09` | `checks.ledger_vs_chain`: `idle` = USDC `balanceOf`, `|principal - aUSDC| <= 100`; `checks.nonce_vs_chain` |
+| Ledger equals Base balances (aUSDC covers principal; surplus is uncredited Aave interest) | `--only S10,S11,S08,S09` | `PASS  S10`, `S11`, `S08`, `S09` | `checks.ledger_vs_chain`: `idle` = USDC `balanceOf`, `principal <= aUSDC + 100` and `aUSDC - principal <= principal / 100 + 100`; `checks.nonce_vs_chain` |
 
 ## What holds (README security table)
 

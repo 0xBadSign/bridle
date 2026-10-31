@@ -17,7 +17,7 @@ import path from "path";
 import { execFileSync } from "child_process";
 import { fileURLToPath } from "url";
 import { baseEncode } from "near-api-js";
-import { NEAR_RPC, BASE_RPC, SIGNER, nearRpc, baseRpc, view, accessKeys, derivedKeyHex, evmAddress, sleep } from "./lib.mjs";
+import { NEAR_RPC, NEAR_ARCHIVAL_RPC, BASE_RPC, SIGNER, nearRpc, nearArchivalRpc, baseRpc, view, accessKeys, derivedKeyHex, evmAddress, sleep } from "./lib.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const args = process.argv.slice(2);
@@ -56,7 +56,10 @@ async function paced(fn) {
 
 const nearTx = (hash, signer) =>
   memo(`near:${hash}`, async () => {
-    const r = await paced(() => nearRpc("EXPERIMENTAL_tx_status", { tx_hash: hash, sender_account_id: signer, wait_until: "FINAL" }));
+    const q = { tx_hash: hash, sender_account_id: signer, wait_until: "FINAL" };
+    // Regular nodes drop transactions after a few epochs and then time out, so the archival node is asked first.
+    let r = await paced(() => nearArchivalRpc("EXPERIMENTAL_tx_status", q));
+    if (!r.result) r = await paced(() => nearRpc("EXPERIMENTAL_tx_status", q));
     need(r.result, `tx ${hash} not found: ${String(JSON.stringify(r.error)).slice(0, 160)}`);
     return r.result;
   });
@@ -224,7 +227,8 @@ const checks = {
   },
 
   // Vault ledger against the real balances: idle = USDC at the vault's Base address,
-  // principal = aUSDC (within the documented Aave rounding dust), no reservation or operation open.
+  // principal <= aUSDC + rounding dust, no reservation or operation open. aUSDC above principal is Aave
+  // interest the ledger does not credit; it is reported and must stay under 1% of principal.
   async ledger_vs_chain(c) {
     let st;
     for (let i = 0; ; i++) {
@@ -239,13 +243,14 @@ const checks = {
     const idle = BigInt(st.ledger.idle);
     const principal = BigInt(st.ledger.principal);
     need(usdc === idle, `idle ${idle} != USDC balance ${usdc}`);
-    const diff = atoken > principal ? atoken - principal : principal - atoken;
-    need(diff <= BigInt(c.dust), `principal ${principal} vs aUSDC ${atoken}: diff ${diff} > ${c.dust}`);
+    need(atoken + BigInt(c.dust) >= principal, `principal ${principal} exceeds aUSDC ${atoken} by more than ${c.dust}`);
+    const interest = atoken > principal ? atoken - principal : 0n;
+    need(interest <= principal / 100n + BigInt(c.dust), `aUSDC ${atoken} is more than 1% above principal ${principal}`);
     if (c.check_sent) {
       const t = await balanceOf(st.chain.usdc, st.policy.treasury);
       need(t >= BigInt(st.ledger.total_sent), `treasury holds ${t}, ledger says ${st.ledger.total_sent} was sent`);
     }
-    return `idle ${idle} = USDC ${usdc}; principal ${principal} vs aUSDC ${atoken}`;
+    return `idle ${idle} = USDC ${usdc}; principal ${principal} vs aUSDC ${atoken}, uncredited Aave interest ${interest}`;
   },
 
   // The vault's reserved nonce equals the Base account nonce of its derived address.
@@ -281,7 +286,7 @@ need(selected.length > 0, "no claim selected");
 const t0 = Date.now();
 const rows = [];
 const out = (...a) => asJson || console.log(...a);
-out(`Bridle claims verifier: ${selected.length} claims against ${NEAR_RPC} and ${BASE_RPC}`);
+out(`Bridle claims verifier: ${selected.length} claims against ${NEAR_RPC} (old txs: ${NEAR_ARCHIVAL_RPC}) and ${BASE_RPC}`);
 out(`(MPC signer ${SIGNER}; no keys, no transactions, read-only)\n`);
 const clip = (s, n) => (s.length > n ? s.slice(0, n - 1) + "~" : s.padEnd(n));
 for (const c of selected) {

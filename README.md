@@ -167,6 +167,7 @@ curl -s https://test.rpc.fastnear.com -H 'Content-Type: application/json' -d '{"
 | An upgrade is parked by code hash, refused early and with other code, then applied after the window | `5UoXMTVV3RDmarhoe4nWMHFrU1m3r7tZ8MFCkRMkBTmD`, then `BdeP6faLEbqFNx3frD7uhA8BoYyFMhPArJFVRBnrTwnD` |
 | The v3 upgrade (earned trust) migrates the live state of both vaults: same ledger, function-call keys only | main `88RekZP3PgtVW7GTYkYjMGcqXo5m3yzFqtnS18uQwksc`, arena `6LYC3ZupmiagMam9Axv5bXjCQMRRi9QnAbLch7di73kC` |
 | Earned trust switched on by a DAO vote that `preview_policy` predicted as FAST, applied at once | `FfUCgHpqHAufMDHEeu3JGwCnbwsdm6guhpP6mEMXXc16` |
+| First earned-trust step: three proved agent operations on 2026-10-28, then a fourth in a later epoch; its settlement emits `trust_up` and the agent's cap goes from 10 to 15 USDC | agent `CwBaWoX3rBU3G4depJaRZwMsJG6ihKvGp1z73jkji5rT`, settle `AUQa2fYfJL7m2CX5YXh36hqgVe6fQhmy5w5wbvTaakFv` |
 | Full live suite: withdraw, cancel, pause, policy lanes, key rotation, guardians, upgrade, unwind | `scripts/live-suite.mjs`, results in `docs/PROGRESS.md` |
 | MPC behaviour tests: reverted txs never attested, log bound to its tx, replay, nonce conflicts, `#[private]` vs keys | `docs/evidence/live-tests.md` |
 | AI red team: three AI agents, 43 logged attempts. No theft and no false accounting. They found one liveness bug (non-canonical signature encoding), which was fixed and deployed the same day | `docs/evidence/ai-redteam.md` |
@@ -217,6 +218,7 @@ Each guarantee comes with its proof:
   - Funds sent to the treasury are only as safe as the treasury.
 - **Liveness.** A determined attacker with several NEAR accounts can delay settlement by sending failing proofs. They cannot make anything count that did not happen. The same applies to deposit proofs.
 - **Aave, the token issuer and the Base sequencer,** for what they hold or carry. The OP Stack L1 data fee is not capped by `maxFeePerGas`.
+- **Aave interest is not credited.** The aUSDC balance grows above `principal` as interest accrues (250 base units, 0.00025 USDC, on 32 USDC by 2026-10-31). The ledger counts only principal, so it never claims more than Base holds; the interest stays at the vault's Base address and is not yet spendable through the ledger.
 - **An undocumented landing-proof call.** `verify_foreign_transaction` exists on the testnet signer contract and works (tested live), but docs.near.org does not document it.
 - **`exposure()` is conditional.** It reports the most that can move per epoch under the current mandate, assuming the above behave. It is not a loss bound.
 - **This is an unaudited testnet build,** with play-money tokens, delay windows of minutes and a one-member council.

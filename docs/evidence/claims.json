@@ -1232,7 +1232,7 @@
    "source": "docs/PROGRESS.md (final state), README, Aave rounding",
    "chain": "base",
    "type": "ledger_vs_chain",
-   "claim": "Vault ledger matches Base: idle = USDC balance at the vault address, principal = aUSDC within 100 base units of Aave rounding, treasury holds what was sent",
+   "claim": "Vault ledger matches Base: idle = USDC balance at the vault address, principal is covered by the aUSDC balance (100 base units of rounding allowed; the surplus is Aave interest, not credited, under 1%), treasury holds what was sent",
    "account": "vault.bridle-hq.testnet",
    "dust": 100,
    "check_sent": true
@@ -1242,7 +1242,7 @@
    "source": "docs/PROGRESS.md (final state), README, Aave rounding",
    "chain": "base",
    "type": "ledger_vs_chain",
-   "claim": "Arena ledger matches Base: idle = USDC, principal = aUSDC within 100 base units",
+   "claim": "Arena ledger matches Base: idle = USDC, principal is covered by aUSDC (surplus is uncredited Aave interest, under 1%)",
    "account": "arena.bridle-hq.testnet",
    "dust": 100
   },
@@ -1649,6 +1649,22 @@
    "type": "base_never_mined",
    "claim": "The non-canonical transaction the red team hit (s with a leading zero byte) was never mined",
    "tx": "0x72dd67dd95ac69eb89d7559eb9471bf2bd740ba13e4d39b4c499bc1755d58fa5"
+  },
+  {
+   "id": "V10",
+   "source": "README, Evidence on testnet (first earned-trust step)",
+   "chain": "near",
+   "type": "near_tx",
+   "claim": "The settlement of the fourth proved agent operation, in a later epoch, raises the agent's earned trust one level (trust_up): cap 10 to 15 USDC",
+   "tx": "AUQa2fYfJL7m2CX5YXh36hqgVe6fQhmy5w5wbvTaakFv",
+   "signer": "bridle-hq.testnet",
+   "expect": {
+    "outcome": "success",
+    "receiver": "vault.bridle-hq.testnet",
+    "logs_contain": [
+     "\"event\":\"trust_up\""
+    ]
+   }
   }
  ]
 }

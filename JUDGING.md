@@ -18,7 +18,7 @@ Re-checks the live testnet claims of the README against public RPCs (`https://te
 Expected final lines:
 
 ```
-86/86 claims verified (0 failed, 0 skipped) in 16s
+87/87 claims verified (0 failed, 0 skipped) in 17s
 RESULT: PASS
 ```
 
@@ -33,7 +33,7 @@ What it proves:
 | Vault ledger | `get_ops`: every step of every operation is `landed` (attested), none is `trusted_landed` (`dao_resolve`) |
 | Keys | The vault and arena accounts hold only function-call keys, with constant method lists, finite allowances and the vault itself as receiver |
 | Code | The deployed code hash of both vaults equals `sha256(deploy/prebuilt/bridle_vault.wasm)`, and that wasm does not import the host functions that add a full-access key or delete the account |
-| Ledger vs. Base | `idle` equals the USDC `balanceOf` the vault's Base address; `principal` equals the aUSDC balance within 100 base units (Aave rounding dust, documented); the vault's `next_nonce` equals the Base nonce |
+| Ledger vs. Base | `idle` equals the USDC `balanceOf` the vault's Base address; the aUSDC balance covers `principal` (100 base units of rounding allowed); any surplus is Aave interest, which the ledger does not credit, and must stay under 1%; the vault's `next_nonce` equals the Base nonce |
 | Address binding | The MPC-derived key of (vault account, path `bridle`) is the vault's Base address; (DAO account, path `treasury`) is the treasury |
 
 ## Step 1b: check an MPC landing proof yourself (30 s)

@@ -7,3 +7,7 @@ node_modules/
 .demo-tmp/
 .scratch/
 _site/
+
+# demo video pipeline output
+video/out/
+video/work/

@@ -186,8 +186,8 @@ export function ops(d, wait) {
 
 // ---------------------------------------------------------------------------------------------
 
-const EX_LABEL = { max_in_protocol: "Most in Aave", agent_moves_per_epoch: "Agent moves per epoch", fast_outflow_per_epoch: "Fast outflow per epoch", agent_gas_wei_per_epoch: "Agent gas per epoch" };
-const exFmt = (k, v) => (k === "agent_gas_wei_per_epoch" ? eth(v) : usdc(v));
+export const EX_LABEL = { max_in_protocol: "Most in Aave", agent_moves_per_epoch: "Agent moves per epoch", fast_outflow_per_epoch: "Fast outflow per epoch", agent_gas_wei_per_epoch: "Agent gas per epoch" };
+export const exFmt = (k, v) => (k === "agent_gas_wei_per_epoch" ? eth(v) : usdc(v));
 
 function parkedKind(k) {
   if (k.kind === "outflow") return `Send ${esc(usdc(k.amount))} to the treasury`;

@@ -143,3 +143,8 @@
     - Test: `signatures_with_leading_zero_bytes_are_encoded_canonically`.
   - Also added: `extra_json_fields_cannot_add_a_destination`.
 - D-016: the Dockerfile uses `node:22-trixie`, because the NEAR sandbox binary needs glibc 2.39 or newer. It was not built locally: the owner removed Docker from WSL. CI builds and publishes it once the repo is public.
+- 2026-11-01: Proposals X-ray page (`web/xray.js`, nav "Proposals X-ray"):
+  - Reads the owner DAO's proposals that call either vault and explains each open one from its arguments with the vault's own `preview_policy` / `preview_outflow` views: lane, waiting period, vetoing guardians, field-by-field diff with loosens/tightens, exposure before and after, and a red warning when the treasury changes. The proposer's description is shown as untrusted text next to it.
+  - "Try a change yourself": edit any field of the live policy and preview it (read-only, nothing signed).
+  - `scripts/stage-proposal.mjs` files one open demo proposal and never votes on it. Staged: proposal 20, `HFrxN7yRFjawSYSAdQRdEHzusLZArqqPixDskrSnmi4o` ("routine fee tune-up" that also doubles the agent ceiling and moves the treasury to a burn address; preview: long lane, 10 min, 3 changes). It stays open for the 7-day proposal period, so re-stage on 2026-11-09.
+  - Checked in the browser on desktop and at 375 px (no horizontal scroll, no console errors). `scripts/check.sh`: ALL CHECKS PASSED.

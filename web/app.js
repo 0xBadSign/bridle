@@ -5,9 +5,10 @@ import { baseRpc, fetchVault, VAULTS } from "./lib/chain.js";
 import { ago, esc } from "./lib/fmt.js";
 import * as pages from "./pages.js";
 import { installVerify } from "./verify-web.js";
+import { mountXray } from "./xray.js";
 
 const $ = (id) => document.getElementById(id);
-const PAGES = ["overview", "ops", "parked", "rejections", "arena", "how"];
+const PAGES = ["overview", "ops", "parked", "proposals", "rejections", "arena", "how"];
 const POLL_MS = 10000;
 
 let vaultKey = "main";
@@ -19,6 +20,7 @@ const cache = {}; // vault key -> { data, wait, error }
 let page = "overview";
 let arenaUnsub = null;
 let arenaMounted = false;
+let xray = null;
 
 const keeper = createKeeper();
 
@@ -27,6 +29,7 @@ function route() {
   page = PAGES.includes(h) ? h : "overview";
   document.querySelectorAll("#nav a").forEach((n) => n.classList.toggle("on", n.dataset.p === page));
   if (page !== "arena" && arenaUnsub) { arenaUnsub(); arenaUnsub = null; arenaMounted = false; }
+  if (page !== "proposals" && xray) { xray.unmount(); xray = null; }
   render();
   window.scrollTo(0, 0);
 }
@@ -37,6 +40,11 @@ function render() {
   $("vault-select").value = vaultKey;
   if (page === "arena") {
     if (!arenaMounted) { arenaUnsub = mountArena(el, keeper); arenaMounted = true; }
+    renderBanner(c);
+    return;
+  }
+  if (page === "proposals") {
+    if (!xray) xray = mountXray(el, () => vaultKey);
     renderBanner(c);
     return;
   }
@@ -106,6 +114,7 @@ $("vault-select").addEventListener("change", (e) => {
   vaultKey = e.target.value;
   try { localStorage.setItem("bridle-vault", vaultKey); } catch {}
   poll();
+  if (xray) xray.vaultChanged();
   render();
 });
 document.addEventListener("bridle-refresh", () => { poll("arena"); if (vaultKey !== "arena") poll(vaultKey); });

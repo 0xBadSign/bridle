@@ -35,9 +35,33 @@ const CASES = [
 ];
 
 const keeper = dry ? null : new Keeper(ARENA_VAULT, PUBLIC_KEEPER_ACCOUNT, { keyFile: PUBLIC_KEEPER_KEY });
+/** Drives the arena's active operation to its end with the public keeper; transient errors are retried. */
+async function drive() {
+  for (let errs = 0; ; ) {
+    let did;
+    try {
+      did = await keeper.tick();
+      errs = 0;
+    } catch (e) {
+      if (++errs > 5) {
+        log("keeper gave up after 5 errors; the cron keeper will finish the operation:", String(e.message || e).slice(0, 160));
+        return;
+      }
+      did = "error: " + String(e.message || e).slice(0, 120);
+    }
+    if (did === null) return;
+    log("keeper:", did);
+    await sleep(/waiting|cooldown|error/.test(did) ? 8000 : 1500);
+  }
+}
+
 const rows = [];
 for (const c of CASES) {
-  const st = await view(ARENA_VAULT, "get_state");
+  const st = await view(ARENA_VAULT, "get_state").catch(() => null);
+  if (!st) {
+    rows.push({ ...c, skipped: "could not read the arena" });
+    continue;
+  }
   if (st.active !== null && st.active !== undefined) {
     log(`arena busy with op ${st.active}; skipping ${c.id}`);
     rows.push({ ...c, skipped: "arena busy" });
@@ -58,12 +82,9 @@ for (const c of CASES) {
       res = { error: String(e.message || e).slice(0, 300) };
     }
     log(c.id, "vault says:", JSON.stringify(res.result ?? res));
-    if (res.result?.ok && keeper) {
-      for (let did; (did = await keeper.tick()) !== null; ) {
-        log("keeper:", did);
-        await sleep(/waiting|cooldown/.test(did) ? 8000 : 1500);
-      }
-    }
+    // Ask the chain, not the act() result: a send error can still have started an operation.
+    const st2 = await view(ARENA_VAULT, "get_state").catch(() => null);
+    if (keeper && (res.result?.ok || res.error) && st2?.active != null) await drive();
   }
   rows.push({ ...c, plan, res });
   await sleep(1500);

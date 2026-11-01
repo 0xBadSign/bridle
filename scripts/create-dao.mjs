@@ -8,10 +8,19 @@ import { account, call, log, nearRpc } from "./lib.mjs";
 const cfg = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
 const name = cfg.dao.split(".")[0];
 const init = { config: { name, purpose: "Bridle demo DAO: owns a policy-bound vault on Base", metadata: "" }, policy: cfg.dao_council };
+const pre = await nearRpc("query", { request_type: "view_account", finality: "final", account_id: cfg.dao });
+if (pre.result) {
+  console.error(cfg.dao + " already exists; set dao to a new, unused name");
+  process.exit(1);
+}
 const res = await call(account(cfg.dao_creator), "sputnik-v2.testnet", "create",
   { name, public_key: null, args: Buffer.from(JSON.stringify(init)).toString("base64") },
   { gasT: 150, deposit: 6n * 10n ** 24n });
 log("create tx", res.hash, "returned", JSON.stringify(res.value));
+if (res.value === false) {
+  console.error("the factory refused to create the DAO (refunded)");
+  process.exit(1);
+}
 const r = await nearRpc("query", { request_type: "view_account", finality: "final", account_id: cfg.dao });
 if (!r.result) {
   console.error("DAO not created");

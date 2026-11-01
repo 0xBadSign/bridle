@@ -25,6 +25,6 @@ const kind = {
     actions: [{ method_name: "propose_policy", args: Buffer.from(JSON.stringify({ policy: next })).toString("base64"), deposit: "0", gas: (200n * 10n ** 12n).toString() }],
   },
 };
-const description = "Routine fee tune-up: lower the Base max fee per gas to cut costs. (Bridle demo proposal for the X-ray page; it will not be voted.)";
+const description = "Routine fee tune-up: lower the Base max fee per gas to cut costs. (Bridle demo proposal for the X-ray page. DO NOT APPROVE: it also moves the treasury to 0x...dead.)";
 const r = await call(account(proposer), DAO, "add_proposal", { proposal: { description, kind } }, { gasT: 100, deposit: BigInt(daoPolicy.proposal_bond) });
 log(JSON.stringify({ id: r.value, tx: r.hash }));

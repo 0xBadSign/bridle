@@ -20,6 +20,7 @@
 - O-1 (before submission): a mainnet NEAR account for the prize payout.
 - O-2 (end): record the video, publish the X post, confirm the submission payload.
 - O-3 (end): create the public GitHub repo, or confirm it can be made public.
+- O-4: a free OpenAI-compatible API key (e.g. Groq) for `scripts/llm-run.mjs`; until then `docs/evidence/llm-run.md` does not exist and the README says how to produce it.
 
 ## Decisions
 - D-001 (2026-10-28): full scope of 18-security-design.md; the owner rejected the scope cut.
@@ -148,3 +149,8 @@
   - "Try a change yourself": edit any field of the live policy and preview it (read-only, nothing signed).
   - `scripts/stage-proposal.mjs` files one open demo proposal and never votes on it. Staged: proposal 20, `HFrxN7yRFjawSYSAdQRdEHzusLZArqqPixDskrSnmi4o` ("routine fee tune-up" that also doubles the agent ceiling and moves the treasury to a burn address; preview: long lane, 10 min, 3 changes). It stays open for the 7-day proposal period, so re-stage on 2026-11-09.
   - Checked in the browser on desktop and at 375 px (no horizontal scroll, no console errors). `scripts/check.sh`: ALL CHECKS PASSED.
+- 2026-11-01: the X-ray page reads each vault's owner DAO from `get_state.owner` instead of a constant, so an adopter only adds the vault to `VAULTS`.
+- 2026-11-01: `scripts/llm-run.mjs`: one command for the real-model evidence (M9). It runs five direct and indirect injections through any OpenAI-compatible model, sends each plan to the arena with the published agent key (the published keeper finishes anything accepted), and writes `docs/evidence/llm-run.md`. Tested with a local mock model that obeys every injection: dry run, then live, five on-chain refusals `not_allowed` (e.g. `Yy1fCZyfdaTnXSoteWuCzAQJJBhiMDsyknHkQoJRQZc`). The mock output is not committed as evidence; the real run waits for the owner's free API key (O-4).
+- 2026-11-01: README "4. Adopt it for your own DAO": configure, deploy in one transaction from the prebuilt wasm, fund and run.
+- D-017: no factory contract. PLAN gated it on earned trust and red-team fixes being green early, and a new deploy surface four days before the core freeze adds risk without new evidence. Adoption is the three script steps in the README.
+- D-018: the WebLLM arena toggle is dropped. Its gate (at least 80% valid obedient JSON from the chosen in-browser model on the corpus) cannot be measured without a 1-2 GB model download, and the real-model path is covered by `scripts/llm-run.mjs`.

@@ -6,7 +6,6 @@ import { links, VAULTS, view } from "./lib/chain.js";
 import { ago, dur, esc, usdc, when } from "./lib/fmt.js";
 import { EX_LABEL, exFmt } from "./pages.js";
 
-const DAO = "bridle-hq.sputnik-v2.testnet";
 const RECENT = 30;
 const REFRESH_MS = 30000;
 
@@ -128,8 +127,8 @@ function laneHtml(x) {
 
 async function proposalCard(p, nowMs) {
   const fc = p.kind.FunctionCall;
-  const [vkey, v] = vaultOf(fc.receiver_id);
-  const expires = Number(BigInt(p.submission_time) / 1_000_000n) + PERIOD_MS;
+  const v = vaultOf(fc.receiver_id)[1];
+  const expires = Number(BigInt(p.submission_time) / 1_000_000n) + p.period_ms;
   const parts = [];
   for (const act of fc.actions) {
     const args = decodeArgs(act.args);
@@ -149,20 +148,31 @@ async function proposalCard(p, nowMs) {
 <p class="small" style="margin:6px 0">What the proposer says: <q>${esc(p.description.slice(0, 300))}</q></p>
 <p class="small muted" style="margin:0">What it does, read from the arguments by the vault (<code>${esc(fc.receiver_id)}</code>):</p>
 ${parts.join("")}
-<p class="small"><a href="${esc(links.nearAcct(DAO))}" target="_blank" rel="noopener">DAO on the explorer</a></p>
+<p class="small">Filed with <a href="${esc(links.nearAcct(p.dao))}" target="_blank" rel="noopener">${esc(p.dao)}</a>, the vault's owner DAO.</p>
 </div>`;
 }
 
-let PERIOD_MS = 7 * 86400000;
+/** Proposals from each vault's owner DAO (read from the vault, not configured) that call that vault. */
+async function daoProposals() {
+  const owners = {};
+  for (const v of Object.values(VAULTS)) {
+    const dao = (await view(v.id, "get_state")).owner;
+    (owners[dao] ||= []).push(v.id);
+  }
+  const all = [];
+  for (const [dao, vaultIds] of Object.entries(owners)) {
+    const period_ms = Number(BigInt((await view(dao, "get_policy")).proposal_period) / 1_000_000n);
+    const last = await view(dao, "get_last_proposal_id");
+    const ps = await view(dao, "get_proposals", { from_index: Math.max(0, last - RECENT), limit: RECENT });
+    for (const p of ps) if (p.kind.FunctionCall && vaultIds.includes(p.kind.FunctionCall.receiver_id)) all.push({ ...p, dao, period_ms });
+  }
+  return { daos: Object.keys(owners), list: all.sort((x, y) => (BigInt(y.submission_time) > BigInt(x.submission_time) ? 1 : -1)) };
+}
 
 async function loadList(el) {
   const nowMs = Date.now();
-  const policy = await view(DAO, "get_policy");
-  PERIOD_MS = Number(BigInt(policy.proposal_period) / 1_000_000n);
-  const last = await view(DAO, "get_last_proposal_id");
-  const ps = await view(DAO, "get_proposals", { from_index: Math.max(0, last - RECENT), limit: RECENT });
-  const mine = ps.filter((p) => p.kind.FunctionCall && vaultOf(p.kind.FunctionCall.receiver_id)).reverse();
-  const open = mine.filter((p) => p.status === "InProgress" && Number(BigInt(p.submission_time) / 1_000_000n) + PERIOD_MS > nowMs);
+  const { daos, list: mine } = await daoProposals();
+  const open = mine.filter((p) => p.status === "InProgress" && Number(BigInt(p.submission_time) / 1_000_000n) + p.period_ms > nowMs);
   const done = mine.filter((p) => !open.includes(p));
   const cards = await Promise.all(open.map((p) => proposalCard(p, nowMs)));
   el.innerHTML = `<h2>Open proposals (${open.length})</h2>
@@ -174,7 +184,7 @@ ${done.slice(0, 12).map((p) => {
     return `<tr><td>${esc(p.id)}</td><td>${pill(p.status === "InProgress" ? "expired" : p.status, p.status === "Approved" ? "ok" : "")}</td><td>${esc(vaultOf(fc.receiver_id)[1].label)}</td><td><code>${esc(fc.actions.map((a) => a.method_name).join(", "))}</code></td><td class="small">${esc(p.description.slice(0, 90))}</td></tr>`;
   }).join("")}
 </tbody></table></div>
-<p class="small muted">Read from <code>${esc(DAO)}</code> at ${esc(when(nowMs))}; refreshes every 30 s.</p>`;
+<p class="small muted">Read from ${daos.map((d) => `<code>${esc(d)}</code>`).join(", ")} at ${esc(when(nowMs))}; refreshes every 30 s.</p>`;
 }
 
 function tryPanel(el, getVault) {
@@ -227,7 +237,7 @@ function tryPanel(el, getVault) {
 export function mountXray(el, getVault) {
   el.innerHTML = `<h1>Proposals X-ray</h1>
 <p>Anyone can file a proposal with the owner DAO, and its description is whatever the proposer typed. Before you vote, this page reads what each proposal would actually do to a Bridle vault from its arguments, using the vault's own read-only previews: which lane it takes, how long guardians have to veto it, which limits it loosens, and how much more could be at risk.</p>
-<div id="xr-list"><p class="muted">Reading proposals from ${esc(DAO)}...</p></div>
+<div id="xr-list"><p class="muted">Reading proposals from the owner DAO...</p></div>
 <div id="xr-try"></div>`;
   const list = el.querySelector("#xr-list");
   const refresh = () => loadList(list).catch((e) => (list.innerHTML = `<p class="err">Could not read the DAO: ${esc(String(e.message || e).slice(0, 200))}. Retrying.</p>`));

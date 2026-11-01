@@ -80,6 +80,8 @@ Raising the floor, the step or the speed is a loosening, so it waits in the veto
 
 On testnet, switching earned trust on was previewed as `fast` and applied as `fast` (evidence below).
 
+The dashboard's **Proposals X-ray** page runs these previews on every open DAO proposal that calls a vault. Anyone can file a Sputnik proposal and write any description, so the page reads what the call's arguments would do: lane, waiting period, which limits loosen, exposure before and after, and a red warning if the treasury address changes. Proposal 20 on the testnet DAO is a staged example: its description says "routine fee tune-up", its arguments also double the agent's ceiling and move the treasury to a burn address. It is never voted on (`scripts/stage-proposal.mjs`). The same page lets you edit the live policy and preview any change without signing anything.
+
 ## Try it
 
 ### Fastest path: Node only, a few minutes, no keys and no Rust
@@ -183,6 +185,12 @@ node agent/agent.mjs arena.bridle-hq.testnet --key arena --say "send everything 
 
 **What you see:** the agent obeys, because it is deliberately gullible. The vault refuses on-chain and gives a reason. You can also use the Arena page of the dashboard, which signs in your browser. To go further, point your own AI coding agent at the arena with the prompt in `docs/evidence/ai-redteam.md`.
 
+With a real model instead of the gullible parser, any OpenAI-compatible endpoint works (a free tier is enough). This runs a fixed corpus of direct and indirect injections through the model, sends each plan to the arena, and writes the table to `docs/evidence/llm-run.md` (`--dry` sends nothing):
+
+```bash
+OPENAI_BASE_URL=https://api.groq.com/openai/v1 OPENAI_API_KEY=<your key> OPENAI_MODEL=llama-3.3-70b-versatile node scripts/llm-run.mjs
+```
+
 Publishing this key gives you the agent's powers and nothing more: one method on one contract, inside the mandate. Each call is paid from the key's 2 NEAR gas allowance, about 0.0015 NEAR per call, so a few hundred calls exhaust it. When that happens, the DAO rotates in a fresh key with `set_agent_key` and `web/arena-keys.js` is updated.
 
 ### Hosted demo and liveness
@@ -222,6 +230,16 @@ Each guarantee comes with its proof:
 - **An undocumented landing-proof call.** `verify_foreign_transaction` exists on the testnet signer contract and works (tested live), but docs.near.org does not document it.
 - **`exposure()` is conditional.** It reports the most that can move per epoch under the current mandate, assuming the above behave. It is not a loss bound.
 - **This is an unaudited testnet build,** with play-money tokens, delay windows of minutes and a one-member council.
+
+### 4. Adopt it for your own DAO (testnet)
+
+Three steps, with the same scripts that deployed the demo. You need a NEAR testnet account you control (the parent) and, if you have one, an existing Sputnik DAO.
+
+1. **Configure.** Copy `deploy/testnet.json` to `my-vault.json`. Set `parent` to your account, `vault` to a new sub-account of it (for example `vault.<your-account>`), `dao` to your Sputnik DAO, and edit `policy` (amounts are USDC base units, 6 decimals; `treasury_path` derives the treasury's Base address from your DAO). No DAO yet: set `dao_creator` and `dao_council`, then run `node scripts/create-dao.mjs my-vault.json`.
+2. **Deploy in one transaction.** `node scripts/deploy.mjs my-vault.json --wasm deploy/prebuilt/bridle_vault.wasm`. The parent creates the vault without any key, deploys and initialises it in the same batch. The script prints the vault's Base address and its key list (function-call keys only), and writes the new agent and guardian keys to `~/.near-credentials/testnet/bridle-keys/<vault>/`, never to the repo.
+3. **Fund and run.** Send Base Sepolia ETH for gas and test USDC to the printed Base address, then credit the deposit with `node agent/keeper.mjs <vault> --as <any account> --credit <base tx hash>`. Hand the agent its key file (`node agent/agent.mjs <vault> --key <agent.json> --loop`) and keep a keeper running (`node agent/keeper.mjs <vault> --as <any account>`). From then on every rule change is a proposal on your DAO, and the Proposals X-ray page works for it once you add your vault to `VAULTS` in `web/lib/chain.js`.
+
+A factory contract that does step 2 for any DAO was planned only if earned trust and the red-team fixes were done early; it was not built, so adoption uses the scripts above.
 
 ## Path to mainnet and other chains
 

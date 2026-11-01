@@ -84,3 +84,5 @@ A local rebuild may differ byte for byte from `deploy/prebuilt/bridle_vault.wasm
 - `docs/VERIFY.md`: one row per README claim: command, expected line, and the test or code that holds the assertion. It ends with the claims that are verified only by reading code.
 - `docs/evidence/claims.json` and `docs/evidence/live-tests.md`: the machine-readable and the narrative live evidence.
 - `deploy/prebuilt/README.md`: how the prebuilt files were made and how they are refreshed after an upgrade (`node scripts/refresh-prebuilt.mjs`).
+- The dashboard's **Proposals X-ray** page (`web/xray.js`): an open demo proposal whose description says "routine fee tune-up" while its arguments move the treasury to a burn address, explained from the arguments by the vault's own `preview_policy` before anyone votes.
+- `scripts/llm-run.mjs`: the same arena attacks through any OpenAI-compatible model, with each plan sent on-chain and the table written to `docs/evidence/llm-run.md`.

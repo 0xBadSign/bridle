@@ -154,3 +154,4 @@
 - 2026-11-01: README "4. Adopt it for your own DAO": configure, deploy in one transaction from the prebuilt wasm, fund and run.
 - D-017: no factory contract. PLAN gated it on earned trust and red-team fixes being green early, and a new deploy surface four days before the core freeze adds risk without new evidence. Adoption is the three script steps in the README.
 - D-018: the WebLLM arena toggle is dropped. Its gate (at least 80% valid obedient JSON from the chosen in-browser model on the corpus) cannot be measured without a 1-2 GB model download, and the real-model path is covered by `scripts/llm-run.mjs`.
+- 2026-11-01: first clean-clone run of the README fastest path (fresh clone of 08d684f, fresh HOME, no keys, WSL): `npm ci` ok, `make verify` 87/87 in 16 s, `make demo-prebuilt` 78/78 in 118 s. Script `.private/clean-run.sh`; repeat on 2026-11-09.

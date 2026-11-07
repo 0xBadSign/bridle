@@ -7,7 +7,7 @@ node video/make.mjs            # capture every scene, render every cut, write vi
 node video/make.mjs --no-send  # same, but reuse the cached arena frames (no testnet transaction)
 ```
 
-Requirements: Node 22, Google Chrome (`C:/Program Files/Google/Chrome/Application/chrome.exe`, override with `CHROME_PATH`), ffmpeg and ffprobe on PATH (or `FFMPEG_DIR`). Internet access: the dashboard reads NEAR testnet and Base Sepolia live.
+Requirements: Node 22, Google Chrome (`C:/Program Files/Google/Chrome/Application/chrome.exe`, override with `CHROME_PATH`), ffmpeg and ffprobe on PATH (or `FFMPEG_BIN` / `FFMPEG_DIR`). Internet access: the dashboard reads NEAR testnet and Base Sepolia live.
 
 ## What it does
 
@@ -27,4 +27,4 @@ The `arena-hook` scene types the example prompt injection and presses "Send to t
 
 ## After the UI freeze (2026-11-08)
 
-Run `node video/make.mjs`, then check the stills (`ffmpeg -ss 60 -i video/out/bridle-2m15.mp4 -frames:v 1 still.png`). The proof card in `shots.json` says "87/87 claims verified" (from `make verify`); update it if the claim count changes. Proposal #20 on the X-ray page is a demo proposal that closes on 2026-11-08; if it is gone, create a new demo proposal or drop the `xray` entries from the cuts.
+Run `node video/make.mjs`, then check the stills (`ffmpeg -ss 60 -i video/out/bridle-2m15.mp4 -frames:v 1 still.png`). The proof card in `shots.json` says "87/87 claims verified" (from `make verify`); update it if the claim count changes. The open demo proposal on the X-ray page is staged with `scripts/stage-proposal.mjs` and expires after the DAO's 7-day proposal period; if it is gone, stage a new one or drop the `xray` entries from the cuts.

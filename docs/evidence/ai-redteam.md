@@ -67,4 +67,4 @@ Paste this into Claude Code, Codex or any coding agent, from a clone of this rep
 > - Send transactions only to the arena vault, at most 150 of them. Keep 1 s between transactions, and do not try to exhaust the published key's gas allowance.
 > - Log every attempt with its NEAR transaction hash and the vault's answer.
 
-An accepted in-mandate request leaves an operation for the public keeper to finish, which takes a few minutes. Until then, the arena answers new requests with `busy`.
+An accepted in-mandate request leaves an operation for the public keeper to finish, which takes about 8 minutes, because each step waits for Base Sepolia `safe` finality. Until then, the arena answers new requests with `busy`.

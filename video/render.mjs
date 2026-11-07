@@ -14,13 +14,12 @@ const cfg = JSON.parse(fs.readFileSync(path.join(HERE, 'shots.json'), 'utf8'));
 const args = process.argv.slice(2);
 const only = args.includes('--cut') ? args[args.indexOf('--cut') + 1].split(',') : null;
 const FPS = 30;
-const WINGET_FFMPEG = 'C:/Users/<user>/AppData/Local/Microsoft/WinGet/Packages/Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe/ffmpeg-9.0.2-full_build/bin/';
 
 function tool(name) {
-  for (const cand of [process.env.FFMPEG_DIR ? path.join(process.env.FFMPEG_DIR, name) : null, name, WINGET_FFMPEG + name].filter(Boolean)) {
+  for (const cand of [process.env.FFMPEG_DIR ? path.join(process.env.FFMPEG_DIR, name) : null, name === 'ffmpeg' ? process.env.FFMPEG_BIN : null, name].filter(Boolean)) {
     if (spawnSync(cand, ['-version'], { stdio: 'ignore' }).status === 0) return cand;
   }
-  throw new Error(`${name} not found (set FFMPEG_DIR)`);
+  throw new Error(`${name} not found (put it on PATH, or set FFMPEG_BIN or FFMPEG_DIR)`);
 }
 const FFMPEG = tool('ffmpeg');
 const FFPROBE = tool('ffprobe');

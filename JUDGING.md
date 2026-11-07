@@ -9,9 +9,11 @@ make verify             # about 20 s, needs internet (public NEAR and Base Sepol
 make demo-prebuilt      # 2 to 5 min, offline after the first run downloads the NEAR sandbox binary
 ```
 
-If you prefer a container with everything baked in: `docker run --rm ghcr.io/<owner>/bridle make verify` (the image is built and published to GHCR by `.github/workflows/image.yml` once the repository is public; `docker build -t bridle .` builds it locally. The Dockerfile has not been run end to end by the author yet, so treat the Node-only path above as the reference).
+Optional container path: `docker build -t bridle . && docker run --rm bridle make verify`. The author has not run the Dockerfile end to end, so the Node path above is the reference.
 
 ## Step 1: `make verify` (live claims)
+
+Explorer pages (nearblocks, basescan) may block automated clients; `make verify` checks every listed hash through public RPC.
 
 Re-checks the live testnet claims of the README against public RPCs (`https://test.rpc.fastnear.com`, `https://sepolia.base.org`). The claims are data in `docs/evidence/claims.json` (id, claim, chain, tx hash or account, expected outcome); the checker is `scripts/verify-claims.mjs`. It sends no transaction.
 

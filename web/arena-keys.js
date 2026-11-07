@@ -1,6 +1,6 @@
 // PUBLISHED ON PURPOSE. These keys belong to the ARENA vault (arena.bridle-hq.testnet), a separate
 // testnet vault with play-money funds. The agent key can only call agent_act on the arena vault and
-// has a 0.5 NEAR gas allowance; the keeper key can only call the public methods settle, advance,
+// has a 2 NEAR gas allowance; the keeper key can only call the public methods settle, advance,
 // probe, cancel and credit_deposit on it. Try to make the agent exceed its mandate.
 // The production vault's keys are never published.
 export const ARENA_VAULT = "arena.bridle-hq.testnet";

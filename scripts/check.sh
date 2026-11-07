@@ -58,6 +58,7 @@ if [ "$ONLY" = all ] || [ "$ONLY" = rust ]; then
     run "wasm imports" wasm_imports
 fi
 if [ "$ONLY" = all ]; then
+    run "agent tests" node --test agent/planner.test.mjs
     run "english only" english_only
     run "no secrets" no_secrets
 fi

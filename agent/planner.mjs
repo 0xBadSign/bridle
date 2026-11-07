@@ -12,15 +12,42 @@
 
 const USDC = 1_000_000n;
 
-/** Parse "50", "50.5", "1,000", "all", "everything", "max" into USDC base units (or "all"). */
+const MONTHS = "jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?";
+const ACTION_VERBS = "send|transfer|pay|drain|wire|move|give|withdraw|pull|exit|unwind|redeem|supply|deposit|invest|lend|put|stake|leverage|amount";
+const DATE_RE = new RegExp(
+  String.raw`\b\d{4}-\d{1,2}-\d{1,2}\b|\b\d{1,2}[/.]\d{1,2}[/.]\d{2,4}\b` + // 2026-11-01, 01/11/2026
+    String.raw`|\b(?:${MONTHS})\.?\s+\d{1,2}(?:st|nd|rd|th)?(?:,?\s+\d{4})?\b` + // November 1, 2026
+    String.raw`|\b\d{1,2}(?:st|nd|rd|th)?\s+(?:${MONTHS})\.?(?:,?\s+\d{4})?\b` + // 1 November 2026
+    String.raw`|\b(?:${MONTHS})\.?,?\s+\d{4}\b`, // November 2026
+  "gi",
+);
+const NUM = String.raw`(\d+(?:\.\d+)?)(?![\d.])\s*(?:(thousand|million|k|m)(?![a-z]))?`;
+const AMOUNT_RES = [
+  new RegExp(String.raw`\$\s*${NUM}`, "i"), // $50
+  new RegExp(String.raw`${NUM}\s*(?:usdc|usd|dollars|bucks)\b`, "i"), // 50 USDC
+  new RegExp(String.raw`\b(?:${ACTION_VERBS})\b[^\d.\n]{0,20}?${NUM}`, "i"), // send 50
+];
+
+/**
+ * Parse "50", "50.5", "1,000", "all", "everything", "max" into USDC base units (or "all").
+ * A number counts as an amount only when it is tied to a currency ("$50", "50 USDC") or follows an
+ * action verb ("send 50"). Dates ("2026-11-01", "November 1, 2026"), percentages, hex and bare
+ * numbers elsewhere in a text are not amounts.
+ */
 function parseAmount(text) {
   if (/\b(all|everything|max|entire|whole|every\s+(cent|dollar|penny|coin|token))\b/i.test(text)) return "all";
-  // Addresses and hashes are not amounts.
-  const m = text.replace(/0x[0-9a-fA-F]+/g, " ").replace(/,/g, "").match(/(\d+(?:\.\d+)?)\s*(k|m)?\s*(usdc|usd|\$|dollars)?/i);
+  const clean = text
+    .replace(/0x[0-9a-fA-F]+/g, " ") // addresses and hashes
+    .replace(DATE_RE, " ")
+    .replace(/\d+(?:\.\d+)?\s*%/g, " ") // percentages
+    .replace(/(?<=\d),(?=\d{3}\b)/g, ""); // 1,000
+  let m = null;
+  for (const re of AMOUNT_RES) if ((m = clean.match(re))) break;
   if (!m) return null;
   let v = Number(m[1]);
-  if (m[2]?.toLowerCase() === "k") v *= 1e3;
-  if (m[2]?.toLowerCase() === "m") v *= 1e6;
+  const unit = m[2]?.toLowerCase();
+  if (unit === "k" || unit === "thousand") v *= 1e3;
+  if (unit === "m" || unit === "million") v *= 1e6;
   return BigInt(Math.round(v * 1e6));
 }
 

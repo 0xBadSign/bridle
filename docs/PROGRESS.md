@@ -2,8 +2,8 @@
 
 ## Where we are
 - 2026-10-29: phase 2 started (PLAN.md section 4, milestones M7 to M12).
-- M0 to M6 are built. The core, the vault, the keeper, the agent (market mode + gullible injection mode + optional LLM), the arena vault, the dashboard (`web/`) and `make demo` (offline, 75/75 PASS) are all done. `scripts/check.sh` passes everything.
-- Every path ran live on testnet. Evidence is below and in `.private/live-suite.out`.
+- M0 to M6 are built. The core, the vault, the keeper, the agent (market mode + gullible injection mode + optional LLM), the arena vault, the dashboard (`web/`) and `make demo` (offline, 78/78 PASS) are all done. `scripts/check.sh` passes everything.
+- Every path ran live on testnet. Evidence is below and in the private live-suite output (private notes, not published).
 - Remaining items need the owner: O-1, O-2, O-3. Hosting the dashboard on GitHub Pages also needs the public repo (`node scripts/build-pages.mjs` builds `_site/`).
 
 ## Testnet deployment
@@ -114,7 +114,7 @@
   - main: `FfUCgHpqHAufMDHEeu3JGwCnbwsdm6guhpP6mEMXXc16`
   - arena: `H8XxEECByHLMr6RNej4ccq2UBLPMMf2wpieEWgp1BzXC`
 - 2026-10-29: cron keeper account `cron.bridle-hq.testnet` (D-015). The workflows `pages.yml` and `keeper.yml` are written but have not run on GitHub yet.
-- 2026-10-29: the AI red-team campaign against the arena started (M9). The brief is in `.private/redteam/BRIEF.md`. The attacker accounts `bridle-red-{a,b,c}-1029.testnet` were funded by the public testnet faucet.
+- 2026-10-29: the AI red-team campaign against the arena started (M9). The brief is in the private notes (not published). The attacker accounts `bridle-red-{a,b,c}-1029.testnet` were funded by the public testnet faucet.
 - 2026-10-29: live earned trust on the main vault. Three proved agent operations (withdraw 5, supply 5, withdraw 5) counted toward the first step:
   - agent txs: `8sKvwLT8xVPs61U1UeFTwYTu7XTgfoyHB6fGft2jxV6F`, `cHpUzNDCoxMwE7uaTHt124fSJgh1e1Qgf4rN46a7YZj`, `59MvcHev42vjvDWt6DJ2jMkfQmaucNmD5VwGSwT2hp85`.
   - `landings` went 1, 2, 3; `proved_total` is 3.
@@ -143,7 +143,7 @@
     - Fixed in `evm::assemble`, which now uses minimal `r` and `s`.
     - Test: `signatures_with_leading_zero_bytes_are_encoded_canonically`.
   - Also added: `extra_json_fields_cannot_add_a_destination`.
-- D-016: the Dockerfile uses `node:22-trixie`, because the NEAR sandbox binary needs glibc 2.39 or newer. It was not built locally: the owner removed Docker from WSL. CI builds and publishes it once the repo is public.
+- D-016: the Dockerfile uses `node:22-trixie`, because the NEAR sandbox binary needs glibc 2.39 or newer. It was not built locally: the owner removed Docker from WSL. CI builds and publishes it once the repo is public. Superseded 2026-11-08: `image.yml` removed (it had never run); the image is a local build only.
 - 2026-11-01: Proposals X-ray page (`web/xray.js`, nav "Proposals X-ray"):
   - Reads the owner DAO's proposals that call either vault and explains each open one from its arguments with the vault's own `preview_policy` / `preview_outflow` views: lane, waiting period, vetoing guardians, field-by-field diff with loosens/tightens, exposure before and after, and a red warning when the treasury changes. The proposer's description is shown as untrusted text next to it.
   - "Try a change yourself": edit any field of the live policy and preview it (read-only, nothing signed).
@@ -154,10 +154,12 @@
 - 2026-11-01: README "4. Adopt it for your own DAO": configure, deploy in one transaction from the prebuilt wasm, fund and run.
 - D-017: no factory contract. PLAN gated it on earned trust and red-team fixes being green early, and a new deploy surface four days before the core freeze adds risk without new evidence. Adoption is the three script steps in the README.
 - D-018: the WebLLM arena toggle is dropped. Its gate (at least 80% valid obedient JSON from the chosen in-browser model on the corpus) cannot be measured without a 1-2 GB model download, and the real-model path is covered by `scripts/llm-run.mjs`.
-- 2026-11-01: first clean-clone run of the README fastest path (fresh clone of 08d684f, fresh HOME, no keys, WSL): `npm ci` ok, `make verify` 87/87 in 16 s, `make demo-prebuilt` 78/78 in 118 s. Script `.private/clean-run.sh`; repeat on 2026-11-09.
+- 2026-11-01: first clean-clone run of the README fastest path (fresh clone of 08d684f, fresh HOME, no keys, WSL): `npm ci` ok, `make verify` 87/87 in 16 s, `make demo-prebuilt` 78/78 in 118 s. Script in the private notes (not published); repeat on 2026-11-09.
 - 2026-11-01: multi-agent review of the day's changes (3 lenses, each finding adversarially verified): 13 confirmed, all fixed.
   - X-ray: arguments are checked the way the vault's serde would (a numeric `amount`, a missing `policy`, non-JSON args or an unknown method are shown as "would fail if executed" instead of a confident preview); an invalid policy shows no lane; multi-action proposals carry guardian removals and unpauses into later actions ("No guardian could veto this"); open outflows are summed against the shared fast allowance; the DAO is paged back over a whole voting period, so newer proposals cannot push an open one out of view; open owner-DAO governance proposals (policy, roles, upgrades) are listed; the try panel is bound to the vault it loaded; refreshes are single-flight and keep open details.
   - Tested with crafted proposals against the live vault (script-tag proposer, image-tag description, numeric amount, remove-all-guardians-then-loosen, unpause-then-send, bad base64, unknown method, governance kind): correct text, no unescaped HTML.
   - `llm-run.mjs`: keeper errors are retried and the run always writes its file; it checks the chain for an active operation instead of trusting the send result.
   - README adoption: the no-DAO path says to pick a new `dao` name; `create-dao.mjs` refuses an existing name and a refused factory call. The demo proposal is described as "currently proposal 20", its description now says DO NOT APPROVE (for the next staging), and the re-stage date is before it expires.
 - 2026-11-01: video pipeline (M12, subagent), commit 39b75d4: `node video/make.mjs` drives headless Chrome over CDP (no dependencies), captures the dashboard scenes, renders title cards and burns captions with ffmpeg. Drafts: `video/out/bridle-2m15.mp4` (138 s) and `bridle-45s.mp4` (44.5 s), 1920x1080 H.264; narration with timings in `video/voiceover.md`. One live arena injection was sent for the hook and refused (`not_allowed`). Recapture after the UI freeze; the X-ray beat needs an open demo proposal (re-stage before 2026-11-08 18:35 UTC).
+- 2026-11-08: fresh-clone re-check by independent agents: `make verify` 87/87, `make demo-prebuilt` 78/78, `make demo` (from source) 78/78, `scripts/check.sh` all green. Live arena attacks were refused on chain (`ANHgLfq3pq821M2LT3LVnNzZJv7jidCXMZE5wks2vGwk` `not_allowed`, `6rNMRMSBdf1bUiZYTS6BJ95AQrDeusGB2cBXQbC2hq9L` `above_agent_max`), and an in-mandate 5 USDC supply on the arena settled with landing proofs (`9CFUYpjtVMh8XgUVpE1NHrNGfjik2WnsMAfAS1UnFGkW`).
+  - Fixes from that re-check: arena key allowance text corrected to 2 NEAR (`web/arena-keys.js`, `docs/VERIFY.md`); hard-coded demo proposal id removed from public docs (the demo proposal is re-staged with `scripts/stage-proposal.mjs`); live in-mandate loop timing stated as about 8 minutes (Base Sepolia `safe` finality); explorer 403 note added; `agent/planner.mjs` no longer reads a date or year as an amount (`agent/planner.test.mjs` added; the poisoned note still yields the injected outflow); `.github/workflows/image.yml` deleted and the Docker sentence in `JUDGING.md` rewritten; `check.yml` reviewed; `cron.bridle-hq.testnet` full-access key disclosed in `docs/VERIFY.md`; `video/render.mjs` no longer hard-codes a personal path (`FFMPEG_BIN` or PATH); `agent/keeper.mjs` prints a one-line error and exits 2 when the key file is missing; README Provenance section added.

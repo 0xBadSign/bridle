@@ -11,3 +11,6 @@ _site/
 # demo video pipeline output
 video/out/
 video/work/
+
+# private agent manual (local only)
+CLAUDE.local.md

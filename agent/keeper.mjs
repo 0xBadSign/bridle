@@ -37,7 +37,14 @@ export class Keeper extends KeeperCore {
 if (import.meta.url === `file://${process.argv[1]}`) {
   const a = process.argv.slice(2);
   const opt = (k, d) => (a.includes(k) ? a[a.indexOf(k) + 1] : d);
-  const k = new Keeper(a[0], opt("--as", "bridle-hq.testnet"), { keyFile: opt("--key") });
+  let k;
+  try {
+    k = new Keeper(a[0], opt("--as", "bridle-hq.testnet"), { keyFile: opt("--key") });
+  } catch (e) {
+    if (e?.code !== "ENOENT") throw e;
+    console.error(`keeper: credentials file not found: ${opt("--key") ?? e.path}. Pass a key file with --key <file> (or put the account's key in ~/.near-credentials/testnet/<account>.json).`);
+    process.exit(2);
+  }
   if (a.includes("--credit")) {
     console.log(JSON.stringify(await k.credit(opt("--credit")), null, 1));
   } else {

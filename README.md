@@ -283,7 +283,7 @@ make check    # fmt, clippy, tests, contract builds, wasm import check, English-
 - Development used AI coding agents.
 
 ## Hackathon compliance
-- Provenance: all code in this repository was written from 2026-10-28, inside the window that opened with the 2026-10-19 announcement (rule Q-001). There is no pre-hackathon code. First commit: `e205e24`, 2026-10-28; `git log` is the authority, and the submitted state is tagged at submission. The feasibility probe from the same day is not part of this repository; its results are in `docs/evidence/`.
+- Provenance: all code in this repository was written from 2026-10-28, inside the window that opened with the 2026-10-19 announcement (rule Q-001). There is no pre-hackathon code. First commit: `04fae19`, 2026-10-28; `git log` is the authority, and the submitted state is tagged at submission. The feasibility probe from the same day is not part of this repository; its results are in `docs/evidence/`.
 - Testnet only (rule Q-010).
 - Companion project: **signing-layer** (Investment Thesis track, same author, independent repository): a data-backed thesis on NEAR as a signing and settlement layer for other chains. Bridle uses none of its data, and it uses none of Bridle's claims.
 - License: MIT OR Apache-2.0.

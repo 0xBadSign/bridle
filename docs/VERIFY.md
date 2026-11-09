@@ -77,7 +77,7 @@ All of these are `make verify` ids; the hash is in `docs/evidence/claims.json` n
 | `make test` / `make check` run the stated gates | `make check` | `ALL CHECKS PASSED` | `scripts/check.sh` |
 | The addresses and the mandate are the ones in `deploy/testnet.json`; Base Sepolia, chain id 84532 | `make verify` | `PASS  S01`, `S02`, `L19` | `checks.policy_matches_deploy` |
 | The vault's Base address and the treasury are MPC-derived and bound to their accounts | `make verify` | `PASS  S03`, `S04`, `S05`, `S06`, `S07` | `checks.derived_address` (derives the key through the signer's `derived_public_key` view and hashes it with keccak) |
-| All code written from 2026-10-28 | `git log --reverse --date=short --format='%ad %h' \| head -1` | `2026-10-28 948fc9d` | git history |
+| All code written from 2026-10-28 | `git log --reverse --date=short --format='%ad %h' \| head -1` | `2026-10-28 e205e24` | git history |
 | Libraries and versions (near-api-js 7.4, near-sandbox, noble curves) | `grep -E 'near-api-js\|near-sandbox\|noble' package.json` | `"near-api-js": "7.4.0"` ... | `package.json` |
 | License MIT OR Apache-2.0 | `ls LICENSE-*` | `LICENSE-APACHE  LICENSE-MIT` | `LICENSE-MIT`, `LICENSE-APACHE`, `Cargo.toml` |
 

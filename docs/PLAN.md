@@ -149,7 +149,7 @@ Dropped for good: a second chain (no public test-USDC faucet on Arbitrum Sepolia
 ### M9 Evidence (main agent plus subagents, 10-30 to 11-03; re-run 11-06)
 - [ ] AI red-team campaign over the whole public surface: attacker agents get the arena agent key, fresh faucet accounts for the anyone-methods, the keeper key, the source and RPC. Goal: get USDC to an address they control, or make the ledger count something that did not happen. A dedicated attacker key; at most about ten MPC-triggering actions per session; never during judging. Publish `docs/evidence/ai-redteam.md` and a paste-able "point your own coding agent at it" prompt.
 - [ ] Attestation made visible: a per-operation timeline (requested, checked, built, signed, broadcast, safe, attested) showing the attestation signature, the recovered key and the pinned key; `scripts/verify-attestation.mjs <near-tx>`; a recorded "wrong hint" excerpt.
-- [ ] A real model in the loop: an OpenAI-compatible endpoint (free tier) for the video and the CLI, plus an indirect-injection scenario (a poisoned market note); `docs/evidence/llm-run.md`.
+- [x] A real model in the loop: an OpenAI-compatible endpoint (free tier) for the video and the CLI, plus an indirect-injection scenario (a poisoned market note); `docs/evidence/llm-run.md`.
 
 ### M10 Core features with hard dates (main agent)
 - [ ] Earned trust (green on both vaults by 11-03 23:59 UTC, or revert and describe it as next):

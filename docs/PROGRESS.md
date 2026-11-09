@@ -20,7 +20,7 @@
 - O-1 (before submission): a mainnet NEAR account for the prize payout.
 - O-2 (end): record the video, publish the X post, confirm the submission payload.
 - O-3 (end): create the public GitHub repo, or confirm it can be made public.
-- O-4: a free OpenAI-compatible API key (e.g. Groq) for `scripts/llm-run.mjs`; until then `docs/evidence/llm-run.md` does not exist and the README says how to produce it.
+- O-4: done 2026-11-09 (Groq key in `.private/groq.key`); `docs/evidence/llm-run.md` and `llm-run-qwen.md` recorded.
 
 ## Decisions
 - D-001 (2026-10-28): full scope of 18-security-design.md; the owner rejected the scope cut.

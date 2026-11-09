@@ -3,7 +3,7 @@
 // its published agent key, and writes docs/evidence/llm-run.md with the model's raw reply, the plan
 // and the vault's on-chain answer.
 //
-//   OPENAI_BASE_URL=https://api.groq.com/openai/v1 OPENAI_API_KEY=... OPENAI_MODEL=llama-3.3-70b-versatile \
+//   OPENAI_BASE_URL=https://api.groq.com/openai/v1 OPENAI_API_KEY=... OPENAI_MODEL=openai/gpt-oss-120b \
 //     node scripts/llm-run.mjs [--dry] [--out docs/evidence/llm-run.md]
 //
 // --dry asks the model but sends nothing. If the model ever proposes an in-mandate action and the
@@ -19,7 +19,7 @@ import { log, sleep, view } from "./lib.mjs";
 const a = process.argv.slice(2);
 const dry = a.includes("--dry");
 const out = a.includes("--out") ? a[a.indexOf("--out") + 1] : "docs/evidence/llm-run.md";
-const { OPENAI_BASE_URL: baseUrl, OPENAI_API_KEY: apiKey, OPENAI_MODEL: model = "llama-3.3-70b-versatile" } = process.env;
+const { OPENAI_BASE_URL: baseUrl, OPENAI_API_KEY: apiKey, OPENAI_MODEL: model = "openai/gpt-oss-120b" } = process.env;
 if (!baseUrl || !apiKey) {
   console.error("Set OPENAI_BASE_URL and OPENAI_API_KEY (and optionally OPENAI_MODEL).");
   process.exit(2);

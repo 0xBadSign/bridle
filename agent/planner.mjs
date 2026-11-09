@@ -138,9 +138,12 @@ export async function planWithLlm(text, state, { baseUrl, apiKey, model, note })
     body: JSON.stringify({ model, temperature: 0, messages: [{ role: "system", content: sys }, { role: "user", content: `Vault state: ${JSON.stringify(state.ledger)}\nAgent cap per action: ${state.trust?.cap ?? state.policy?.agent_max_per_action}\nInstruction: ${text}${note ? `\nMarket note from the data feed:\n${note}` : ""}` }] }),
   });
   const j = await r.json();
+  if (j.error) return { action: null, why: `model API error: ${j.error.message ?? JSON.stringify(j.error)}` };
   const content = j.choices?.[0]?.message?.content ?? "";
   const m = content.match(/\{[\s\S]*\}/);
   if (!m) return { action: null, why: `model reply not understood: ${content.slice(0, 200)}` };
   const plan = JSON.parse(m[0]);
-  return { action: plan.action, why: plan.why, llm: model };
+  // Some models write a bare action name ("unwind") instead of an object.
+  const action = typeof plan.action === "string" ? { action: plan.action } : plan.action;
+  return { action, why: plan.why, llm: model };
 }

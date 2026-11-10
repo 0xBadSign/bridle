@@ -28,3 +28,7 @@ The `arena-hook` scene types the example prompt injection and presses "Send to t
 ## After the UI freeze (2026-11-08)
 
 Run `node video/make.mjs`, then check the stills (`ffmpeg -ss 60 -i video/out/bridle-2m15.mp4 -frames:v 1 still.png`). The proof card in `shots.json` says "87/87 claims verified" (from `make verify`); update it if the claim count changes. The open demo proposal on the X-ray page is staged with `scripts/stage-proposal.mjs` and expires after the DAO's 7-day proposal period; if it is gone, stage a new one or drop the `xray` entries from the cuts.
+
+## Voice-over
+
+`node video/voice.mjs` speaks every caption line with a text-to-speech model (default `canopylabs/orpheus-v1-english` on Groq, voice `troy`; override with `--voice` or `TTS_VOICE`, `TTS_MODEL`, `TTS_BASE_URL`) and lays each clip under the video at its caption's start time. It needs `GROQ_API_KEY` or the key in `.private/groq.key` (gitignored), runs after `render.mjs`, and writes `video/out/<cut>-voice.mp4` next to the silent cut. A clip longer than its caption is sped up by at most 1.2x; anything still too long is reported. Clips are cached in `video/work/tts/`.

@@ -13,6 +13,10 @@ const OUT = path.join(HERE, 'out');
 const cfg = JSON.parse(fs.readFileSync(path.join(HERE, 'shots.json'), 'utf8'));
 const args = process.argv.slice(2);
 const only = args.includes('--cut') ? args[args.indexOf('--cut') + 1].split(',') : null;
+// --voice: stretch caption windows to the spoken lines in work/tts/durations.json (written by voice.mjs).
+const VOICE = args.includes('--voice') ? JSON.parse(fs.readFileSync(path.join(WORK, 'tts', 'durations.json'), 'utf8')) : null;
+const VOICE_LEAD = 0.15; // voice.mjs starts each clip this long after its caption
+const VOICE_TAIL = 0.45; // silence after a line before the next caption
 const FPS = 30;
 
 function tool(name) {
@@ -83,14 +87,34 @@ function renderCut(id, cut) {
     const segs = slice(e.scene, e.from, e.to);
     const dur = segs.reduce((a, s) => a + s.dur, 0);
     if (dur <= 0) throw new Error(`empty entry ${e.scene} in ${id}`);
-    for (const s of segs) list.push(s);
     const lines = typeof e.caption === 'string' ? [{ at: 0, text: e.caption }] : e.caption || [];
+    if (!VOICE || !lines.length) {
+      for (const s of segs) list.push(s);
+      lines.forEach((l, i) => {
+        const start = t + l.at;
+        const end = i + 1 < lines.length ? t + lines[i + 1].at : t + dur;
+        caps.push({ start, end: end - 0.04, text: l.text, pos: l.pos });
+      });
+      t += dur;
+      continue;
+    }
+    // Voiced: each caption window lasts at least as long as its spoken line; the window's last
+    // frame is held for the extra time.
+    const base = e.from ?? 0;
+    const bounds = [...lines.map((l) => l.at), dur];
+    if (bounds[0] > 0) for (const s of slice(e.scene, base, base + bounds[0])) { list.push(s); t += s.dur; }
     lines.forEach((l, i) => {
-      const start = t + l.at;
-      const end = i + 1 < lines.length ? t + lines[i + 1].at : t + dur;
-      caps.push({ start, end: end - 0.04, text: l.text, pos: l.pos });
+      const win = slice(e.scene, base + bounds[i], base + bounds[i + 1]);
+      const w = win.reduce((a, s) => a + s.dur, 0);
+      for (const s of win) list.push(s);
+      const spoken = VOICE[l.text];
+      if (spoken === undefined) console.log(`  note: no voice clip for "${l.text.slice(0, 50)}"`);
+      const need = spoken === undefined ? 0 : spoken + VOICE_LEAD + VOICE_TAIL;
+      const hold = Math.max(0, need - w);
+      if (hold > 0) list.push({ file: (win.at(-1) ?? list.at(-1)).file, dur: hold });
+      caps.push({ start: t, end: t + w + hold - 0.04, text: l.text, pos: l.pos });
+      t += w + hold;
     });
-    t += dur;
   }
   const total = t;
   const listFile = path.join(WORK, `${id}.concat.txt`);
@@ -98,6 +122,7 @@ function renderCut(id, cut) {
   fs.writeFileSync(listFile, `${body}\nfile '${list[list.length - 1].file}'\n`);
   const ass = ASS_HEAD + caps.map((c) => `Dialogue: 0,${ts(c.start)},${ts(c.end)},Cap,,0,0,${c.pos === 'top' ? 50 : 0},,{${c.pos === 'top' ? '\\an8' : ''}\\fad(180,180)}${wrap(c.text)}`).join('\n') + '\n';
   fs.writeFileSync(path.join(WORK, `${id}.ass`), ass);
+  fs.writeFileSync(path.join(WORK, `${id}.captions.json`), JSON.stringify({ caps, total }));
   const outFile = path.join(OUT, cut.out);
   const vf = `fps=${FPS},subtitles=${id}.ass,fade=t=in:d=0.4,fade=t=out:st=${(total - 0.6).toFixed(2)}:d=0.6,format=yuv420p`;
   const r = spawnSync(FFMPEG, ['-y', '-v', 'error', '-f', 'concat', '-safe', '0', '-i', `${id}.concat.txt`, '-vf', vf, '-t', total.toFixed(3), '-c:v', 'libx264', '-preset', 'medium', '-crf', '18', '-r', String(FPS), '-pix_fmt', 'yuv420p', '-movflags', '+faststart', '-an', outFile], { cwd: WORK, stdio: 'inherit' });

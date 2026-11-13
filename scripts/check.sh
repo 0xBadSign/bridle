@@ -24,7 +24,7 @@ english_only() {
     local hits
     hits=$(git ls-files -co --exclude-standard \
         | grep -v -E '^(LICENSE-|scripts/check\.sh|.*package-lock\.json)' \
-        | xargs -d '\n' grep -n -P '[x{00C0}-x{024F}]' 2>/dev/null || true)
+        | xargs -d '\n' grep -n -P '[\x{00C0}-\x{024F}]' 2>/dev/null || true)
     [ -z "$hits" ] || { echo "$hits"; return 1; }
 }
 

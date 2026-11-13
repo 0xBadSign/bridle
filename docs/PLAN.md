@@ -1,6 +1,6 @@
 # Bridle plan
 
-Binding security design: `../near-research/18-security-design.md` (D-refs below point to its sections). Live facts: `../near-research/16-attack-tests.md`.
+Binding security design: the project's internal design notes (not published); D-refs below point to their sections. The published evidence is in `docs/evidence/` and `docs/VERIFY.md`.
 
 ## 1. One-liner and story
 
@@ -73,7 +73,7 @@ Side states: `Cancelling`, `RevertedResolved`, `Frozen`.
 ### M1 Core loop on testnet (days 0-3)
 - [ ] bridle-core:
   - EVM builder for all action kinds (omni-transaction);
-  - payload hashing for sign and ForeignTx (port of `~/near-probe/e2e.mjs`), with golden vectors from the probe txs;
+  - payload hashing for sign and ForeignTx (port of the early end-to-end probe script), with golden vectors from the probe txs;
   - policy struct and caps.
 - [ ] Vault:
   - init with pinned signer, derived key and ForeignTx key;
@@ -127,7 +127,7 @@ Side states: `Cancelling`, `RevertedResolved`, `Frozen`.
 
 ## 4. Phase 2 (2026-10-29 to 2026-11-14): raise the odds
 
-Source: the expansion debate in `../near-research/20-expansion-fable.md`, `21-expansion-claude.md` and `23-expansion-round2-fable.md`. The build took hours, not weeks, so the constraint is now judge attention, screener verdicts, owner time and the correctness of any new surface. Order: evidence and legibility first, then a small number of core features with hard dates.
+Source: an internal design review between AI models (not published). The build took hours, not weeks, so the constraint is now judge attention, screener verdicts, owner time and the correctness of any new surface. Order: evidence and legibility first, then a small number of core features with hard dates.
 
 Freezes: **contract and core 2026-11-05 23:59 UTC**; **UI, scripts and docs 2026-11-08 23:59 UTC**. After that, only bug fixes with a test, copy and links. Submit 2026-11-10/11. Nothing is scheduled for the owner on 2026-11-12.
 

@@ -14,13 +14,13 @@
 | Owner DAO | `bridle-hq.sputnik-v2.testnet`. Council `bridle-hq.testnet`, 1-of-1. Create tx `DivTyMizcMJz6SPV5mtDhtKKp5uPrVFFbkSNKkMQ4dwL` |
 | Treasury (DAO-derived Base address, path `treasury`) | `0xdc35e2ce2ae9c135795b6cc53288d4f72a866007` |
 | Arena vault (published agent key, `web/arena-keys.js`) | `arena.bridle-hq.testnet`, Base `0x53532502c663fdbe9dee366b17e03ce79ec6d3de`. Public keeper `keeper.bridle-hq.testnet` (function-call key, public methods only) |
-| Agent and guardian keys | `~/.near-credentials/testnet/bridle-keys/vault.bridle-hq.testnet/` (WSL, not in the repo) |
+| Agent and guardian keys | held off-repo by the operator (never committed) |
 
 ## Owner actions
-- O-1 (before submission): a mainnet NEAR account for the prize payout.
+- O-1: done.
 - O-2 (end): record the video, publish the X post, confirm the submission payload.
 - O-3 (end): create the public GitHub repo, or confirm it can be made public.
-- O-4: done 2026-11-09 (Groq key in `.private/groq.key`); `docs/evidence/llm-run.md` and `llm-run-qwen.md` recorded.
+- O-4: done 2026-11-09; `docs/evidence/llm-run.md` and `llm-run-qwen.md` recorded.
 
 ## Decisions
 - D-001 (2026-10-28): full scope of 18-security-design.md; the owner rejected the scope cut.
@@ -31,7 +31,7 @@
 - D-006: the vault uses low-level `env::promise_*` calls instead of `near_sdk::Promise`. The high-level type links the full-access-key and delete-account host functions into the wasm. `scripts/wasm-imports.mjs` proves both are absent.
 - D-007: the vault is a sub-account created by its parent in one batch (CreateAccount, Transfer, DeployContract, `new`) with no AddKey. It never had a full-access key, so there is no DeleteKey step to trust.
 - D-008: the NEAR RPC defaults to `https://test.rpc.fastnear.com`. `rpc.testnet.near.org` is deprecated and rate-limits with 429.
-- D-010 (2026-10-29): phase 2 plan (PLAN.md section 4) from the expansion debate (near-research 20, 21, 23). Evidence and legibility come first; earned trust and `preview` are the only new core features, with hard dates.
+- D-010 (2026-10-29): phase 2 plan (PLAN.md section 4) from an internal design review. Evidence and legibility come first; earned trust and `preview` are the only new core features, with hard dates.
 - D-011: no second chain. Aave's Arbitrum Sepolia USDC can only be minted by an EOA (`owner()` = `0xab7d…4798`, no code). The MPC does not observe Ethereum Sepolia.
 - D-012: two-stage freeze: contract and core 2026-11-05, UI, scripts and docs 2026-11-08.
 - D-013: the AI red-team campaign runs before the core freeze and never during judging. Each accepted in-mandate action locks the arena for minutes.
@@ -39,7 +39,7 @@
 - D-014: `v1.signer` (mainnet) and `v1.signer-prod.testnet` have the same code hash `DAE5ng4ZFR2ctMx9SizQBqmGkVbKUutgZ4ZECD4R8Sm9` (checked 2026-10-29). The README's "path to mainnet" paragraph rests on this. Nothing is deployed to mainnet.
 
 ## Session log
-- 2026-10-28: repo created; plan written from near-research 11-19.
+- 2026-10-28: repo created; plan written from the internal research notes.
 - 2026-10-28: bridle-core written.
   - 6 golden tests: our builder reproduces the live probe tx hashes; the expected logs equal the live logs; the payload hash equals live MPC attestations.
   - 24 scenario and property tests, including strict ledger conservation over random interleavings.
@@ -83,7 +83,7 @@
   - v2 with v1 to v2 state migration: main `GVPJyDt4Tg8ZAfFcahvSaNFVLYHe84m5NaWRV4GEwXss`, arena `H5CdENCopiRZSM3Zop8oSCfGaA5Q4T8Pjou93Eqf7iS2`. Both report `state_version` 2 and their ledgers are intact.
   - Post-migration smoke: arena injection refused (`AH36ycxf...`). The agent's market-mode supply of 31.9999 USDC was attested in both steps (`D9aTFVoX47CbYSB29bN4z7agRtASLvfrVsHn7Aqo4EHE`).
 - 2026-10-28: `make demo` 75/75 PASS on the v2 code; `scripts/check.sh` all green.
-- 2026-10-29: phase 2 started. The debate with Fable is in near-research 20, 21 and 23; the thesis data spike is in 22.
+- 2026-10-29: phase 2 started. The design review notes are internal.
 - 2026-10-29: v3: earned trust and pre-vote previews (M10). Core:
   - The policy gains `trust_floor_per_action`, `trust_step_per_action`, `trust_landings_per_step` and `trust_epochs_per_step`. Raising any of them is parked (short lane); lowering them is FAST.
   - The agent's cap is min(ceiling, floor + level x step).
@@ -143,7 +143,7 @@
     - Fixed in `evm::assemble`, which now uses minimal `r` and `s`.
     - Test: `signatures_with_leading_zero_bytes_are_encoded_canonically`.
   - Also added: `extra_json_fields_cannot_add_a_destination`.
-- D-016: the Dockerfile uses `node:22-trixie`, because the NEAR sandbox binary needs glibc 2.39 or newer. It was not built locally: the owner removed Docker from WSL. CI builds and publishes it once the repo is public. Superseded 2026-11-08: `image.yml` removed (it had never run); the image is a local build only.
+- D-016: the Dockerfile uses `node:22-trixie`, because the NEAR sandbox binary needs glibc 2.39 or newer. It was not built locally. CI builds and publishes it once the repo is public. Superseded 2026-11-08: `image.yml` removed (it had never run); the image is a local build only.
 - 2026-11-01: Proposals X-ray page (`web/xray.js`, nav "Proposals X-ray"):
   - Reads the owner DAO's proposals that call either vault and explains each open one from its arguments with the vault's own `preview_policy` / `preview_outflow` views: lane, waiting period, vetoing guardians, field-by-field diff with loosens/tightens, exposure before and after, and a red warning when the treasury changes. The proposer's description is shown as untrusted text next to it.
   - "Try a change yourself": edit any field of the live policy and preview it (read-only, nothing signed).

@@ -14,3 +14,7 @@ video/work/
 
 # private agent manual (local only)
 CLAUDE.local.md
+.env.*
+*.key
+*.pem
+.near-credentials/

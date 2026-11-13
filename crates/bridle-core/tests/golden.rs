@@ -1,5 +1,5 @@
 //! Golden vectors from live Base Sepolia transactions that the probe vault built, the NEAR MPC
-//! network signed, and the MPC later attested (near-research/14 and 16).
+//! network signed, and the MPC later attested (see docs/evidence/live-tests.md).
 //! If any of these fail, the vault would sign or expect something different from what the chain does.
 
 use bridle_core::evm::{self, Call, Chain, MpcSignature, TxParams};

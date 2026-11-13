@@ -204,9 +204,9 @@ Publishing this key gives you the agent's powers and nothing more: one method on
 
 ### Hosted demo and liveness
 
-- Dashboard: `https://<owner>.github.io/bridle/` (placeholder, replaced when the repo is public). It is deployed from `main` by `.github/workflows/pages.yml`.
+- Dashboard: https://0xbadsign.github.io/bridle/. It is deployed from `main` by `.github/workflows/pages.yml`.
 - A cron keeper (`.github/workflows/keeper.yml`) runs every 10 minutes against both vaults. It finishes any in-flight operation (broadcast, wait for Base `safe`, settle, probe or cancel) and fails visibly in the Actions tab if the arena agent key or its own keys run low on gas allowance.
-- Each tick appends one record per vault to `liveness.jsonl` on the orphan `liveness` branch (`https://github.com/<owner>/bridle/tree/liveness`); nothing is committed to `main`. `node scripts/liveness-report.mjs <path-or-raw-url>` summarises it in `docs/evidence/liveness.md`.
+- Each tick appends one record per vault to `liveness.jsonl` on the orphan `liveness` branch (`https://github.com/0xBadSign/bridle/tree/liveness`); nothing is committed to `main`. `node scripts/liveness-report.mjs <path-or-raw-url>` summarises it in `docs/evidence/liveness.md`.
 - The keeper key is a function-call key that can only call the vault's public keeper methods (`settle`, `advance`, `probe`, `cancel`, `credit_deposit`); it cannot change what is signed or move funds.
 
 ## Security
@@ -292,5 +292,5 @@ make check    # fmt, clippy, tests, contract builds, wasm import check, English-
 ## Hackathon compliance
 - Provenance: all code in this repository was written from 2026-10-28, inside the window that opened with the 2026-10-19 announcement (rule Q-001). There is no pre-hackathon code. First commit: `04fae19`, 2026-10-28; `git log` is the authority, and the submitted state is tagged at submission. The feasibility probe from the same day is not part of this repository; its results are in `docs/evidence/`.
 - Testnet only (rule Q-010).
-- Companion project: **signing-layer** (Investment Thesis track, same author, independent repository): a data-backed thesis on NEAR as a signing and settlement layer for other chains. Bridle uses none of its data, and it uses none of Bridle's claims.
+- Companion project: **[signing-layer](https://github.com/0xBadSign/signing-layer)** (Investment Thesis track, same author, independent repository): a data-backed thesis on NEAR as a signing and settlement layer for other chains. Bridle uses none of its data, and it uses none of Bridle's claims.
 - License: MIT OR Apache-2.0.

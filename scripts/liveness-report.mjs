@@ -1,5 +1,5 @@
 // Summarise the keeper cron's liveness log into docs/evidence/liveness.md.
-//   node scripts/liveness-report.mjs <liveness.jsonl | https://raw.githubusercontent.com/<owner>/bridle/liveness/liveness.jsonl> [out.md]
+//   node scripts/liveness-report.mjs <liveness.jsonl | https://raw.githubusercontent.com/0xBadSign/bridle/liveness/liveness.jsonl> [out.md]
 import fs from "fs";
 
 const src = process.argv[2];

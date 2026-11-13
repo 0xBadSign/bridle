@@ -3,7 +3,7 @@
 Everything below needs only **Node 22**, `npm`, `make` and `git`, on Linux, macOS or WSL. No Rust, no keys, no faucet, no testnet account. The first two steps are the whole check; step 3 is optional.
 
 ```bash
-git clone <repo-url> bridle && cd bridle
+git clone https://github.com/0xBadSign/bridle bridle && cd bridle
 npm ci                  # about 30 s
 make verify             # about 20 s, needs internet (public NEAR and Base Sepolia RPCs, read-only)
 make demo-prebuilt      # 2 to 5 min, offline after the first run downloads the NEAR sandbox binary

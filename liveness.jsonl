@@ -98,3 +98,5 @@
 {"tick":"2026-11-27T14:43:58.829Z","vault":"arena.bridle-hq.testnet","op":null,"actions":[],"outcome":"idle","attest_latency_ms":null,"arena_agent_allowance_near":1.9911,"cron_key_allowance_near":1.5}
 {"tick":"2026-11-27T22:59:30.397Z","vault":"vault.bridle-hq.testnet","op":null,"actions":[],"outcome":"idle","attest_latency_ms":null,"arena_agent_allowance_near":1.9911,"cron_key_allowance_near":1.5}
 {"tick":"2026-11-27T22:59:30.397Z","vault":"arena.bridle-hq.testnet","op":null,"actions":[],"outcome":"idle","attest_latency_ms":null,"arena_agent_allowance_near":1.9911,"cron_key_allowance_near":1.5}
+{"tick":"2026-11-28T04:39:00.543Z","vault":"vault.bridle-hq.testnet","op":null,"actions":[],"outcome":"idle","attest_latency_ms":null,"arena_agent_allowance_near":1.9911,"cron_key_allowance_near":1.5}
+{"tick":"2026-11-28T04:39:00.543Z","vault":"arena.bridle-hq.testnet","op":null,"actions":[],"outcome":"idle","attest_latency_ms":null,"arena_agent_allowance_near":1.9911,"cron_key_allowance_near":1.5}
